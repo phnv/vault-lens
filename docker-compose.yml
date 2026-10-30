@@ -1,0 +1,192 @@
+name: vaultlens
+
+x-airflow-common: &airflow-common
+  build: vault-lens-airflow/.
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    AIRFLOW_CONFIG: '/opt/airflow/vault-lens-airflow/config/airflow.cfg'
+    AIRFLOW__WEBSERVER__WORKERS: '2'
+    AIRFLOW__WEBSERVER__WEB_SERVER_MASTER_TIMEOUT: '300'
+    AIRFLOW__WEBSERVER__WEB_SERVER_WORKER_TIMEOUT: '300'
+    PYTHONPYCACHEPREFIX: /tmp/pycache
+    PYTHONPATH: '/opt/airflow/vault-lens-airflow/src:${PYTHONPATH:-}'
+    CONFIG_PATH: '/app/config/vaultlens.yaml'
+    DATA_DIR: '/data'
+    NOTES_PATH: '/opt/airflow/notes'
+    ES_URL: 'http://elasticsearch:9200'
+    POSTGRES_HOST: 'postgres'
+    POSTGRES_PORT: '5432'
+    POSTGRES_DB: 'airflow'
+    POSTGRES_USER: 'airflow'
+    POSTGRES_PASSWORD: 'airflow'
+  volumes:
+    - ${AIRFLOW_PROJ_DIR:-.}/vault-lens-airflow/dags:/opt/airflow/vault-lens-airflow/dags/
+    - ${AIRFLOW_PROJ_DIR:-.}/vault-lens-airflow/logs:/opt/airflow/vault-lens-airflow/logs/
+    - ${AIRFLOW_PROJ_DIR:-.}/vault-lens-airflow/config:/opt/airflow/vault-lens-airflow/config/
+    - ${AIRFLOW_PROJ_DIR:-.}/vault-lens-airflow/plugins:/opt/airflow/vault-lens-airflow/plugins/
+    - ./src:/opt/airflow/vault-lens-airflow/src:ro
+    - ./config:/app/config:ro
+    - appdata:/data
+    - ${VAULT_PATH:-${NOTES_SOURCE_DIR:-/mnt/c/Users/Home/Documents/notes}}:/vaults/personal:ro
+    - ${VAULT_PATH:-${NOTES_SOURCE_DIR:-/mnt/c/Users/Home/Documents/notes}}:/opt/airflow/notes:ro
+  user: "${AIRFLOW_UID:-1000}:0"
+  depends_on: &airflow-common-depends-on
+    redis:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION:-8.17.0}
+    container_name: elasticsearch
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"      # local-only; port is bound to 127.0.0.1 below
+      ES_JAVA_OPTS: -Xms${ES_HEAP:-512m} -Xmx${ES_HEAP:-512m}
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build: .
+    container_name: vaultlens_app
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      ES_URL: http://elasticsearch:9200
+      CONFIG_PATH: /app/config/vaultlens.yaml
+      DATA_DIR: /data
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_DEFAULT_PROVIDER: ${LLM_DEFAULT_PROVIDER:-${LLM_PROVIDER:-ollama}}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-180}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_URL: ${OLLAMA_URL:-${OLLAMA_BASE_URL:-http://host.docker.internal:11434}}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:1.5b-instruct}
+      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-4096}
+      OLLAMA_NUM_PREDICT: ${OLLAMA_NUM_PREDICT:-512}
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-10m}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+    volumes:
+      - ./config:/app/config:ro
+      - appdata:/data
+      - ${VAULT_PATH:-${NOTES_SOURCE_DIR:-/mnt/c/Users/Home/Documents/notes}}:/vaults/personal:ro   # read-only
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets Ollama connect to Windows host
+    ports:
+      - "127.0.0.1:8501:8501"
+    restart: unless-stopped
+
+  # --- Airflow Stack (Optional, started via: docker compose --profile airflow up -d) ---
+
+  postgres:
+    profiles: ["airflow"]
+    image: postgres:13
+    container_name: airflow_postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "airflow" ]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    ports:
+      - "127.0.0.1:5432:5432"
+    restart: unless-stopped
+
+  redis:
+    profiles: ["airflow"]
+    image: redis:7.2-bookworm
+    container_name: airflow_redis
+    expose:
+      - 6379
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 30s
+      retries: 50
+      start_period: 30s
+    restart: unless-stopped
+
+  airflow-webserver:
+    <<: *airflow-common
+    profiles: ["airflow"]
+    command: webserver
+    container_name: airflow_webserver
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    profiles: ["airflow"]
+    command: scheduler
+    container_name: airflow_scheduler
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    mem_limit: 1024m
+
+  airflow-triggerer:
+    <<: *airflow-common
+    profiles: ["airflow"]
+    command: triggerer
+    container_name: airflow_triggerer
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-init:
+    <<: *airflow-common
+    profiles: ["airflow"]
+    container_name: airflow_init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        mkdir -p /sources/logs /sources/dags /sources/plugins /sources/config
+        chown -R "${AIRFLOW_UID:-1000}:0" /sources/{logs,dags,plugins,config}
+        exec /entrypoint airflow version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+    user: "0:0"
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/vault-lens-airflow:/sources
+
+volumes:
+  esdata:
+  appdata:
+  postgres-db-volume:

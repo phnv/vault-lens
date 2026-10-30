@@ -1,0 +1,14 @@
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+data/
+
+./Cap05/
+vault-lens-airflow/logs/
+.agents/
+skills-lock.json
+docs/

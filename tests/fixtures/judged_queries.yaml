@@ -1,0 +1,8 @@
+version: 1
+queries:
+  - id: q1
+    query: "elasticsearch analyzers"
+    vaults: [fixture]
+    relevant:
+      - {doc_id: "fixture:202610031010", rating: 3}
+      - {doc_id: "fixture:202610021545", rating: 1}

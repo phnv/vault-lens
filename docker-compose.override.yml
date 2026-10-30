@@ -1,0 +1,7 @@
+# Dev convenience, picked up automatically by `docker compose`. Delete it (or use
+# `docker compose -f docker-compose.yml up`) for a non-dev run.
+services:
+  app:
+    volumes:
+      - ./src:/app/src          # live code; Streamlit reloads on save
+      - ./tests:/app/tests

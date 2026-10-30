@@ -1,0 +1,11 @@
+# Manually judged queries for the Evaluate page. Ratings: 0 not relevant .. 3 perfect.
+# doc_id format: "<vault slug>:<frontmatter id>" or "<vault slug>:path:<relative path>" when the note has no id.
+# Replace the example below with ~20-30 real queries from your own vault.
+version: 1
+queries: []
+# - id: q1
+#   query: "reuniões de projeto"
+#   vaults: [personal-vault]
+#   relevant:
+#     - {doc_id: "personal-vault:202610021545", rating: 3}
+#     - {doc_id: "personal-vault:path:10-Projects/dayo/kickoff.md", rating: 2}

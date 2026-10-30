@@ -1,0 +1,13 @@
+# Vault registry and index settings. Paths are INSIDE the app container.
+# To add a vault: mount it read-only in docker-compose.yml, then add an entry here.
+vaults:
+  - slug: personal-vault
+    label: Personal vault
+    path: /vaults/personal
+    obsidian_vault_name: personal-vault   # for obsidian:// links; remove if you don't use Obsidian
+    # host_path: /home/you/vault          # for "open in editor" links (host path, not container path)
+    ignore: [".obsidian", ".trash", "_Meta/templates"]
+
+index:
+  alias: notes
+  chunk_max_chars: 1500
