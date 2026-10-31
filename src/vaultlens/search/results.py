@@ -51,6 +51,8 @@ def parse_hit(h: dict[str, Any]) -> Hit:
         status=src.get("status"),
         tags=src.get("tags", []) or [],
         modified=src.get("modified"),
+        created=src.get("created"),
+        indexed_at=src.get("indexed_at"),
         note_id=src.get("note_id"),
         aliases=src.get("aliases", []) or [],
         links_out=src.get("links_out", []) or [],

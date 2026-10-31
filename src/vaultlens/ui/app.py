@@ -4,7 +4,7 @@ from __future__ import annotations
 import streamlit as st
 
 from vaultlens.llm.base import OFF_DEVICE, PROVIDERS
-from vaultlens.ui import services
+from vaultlens.ui import components, services
 
 st.set_page_config(page_title="Vault Search", page_icon="🔎", layout="wide")
 
@@ -13,8 +13,11 @@ def _load_saved(name: str, spec: dict) -> None:
     st.session_state["loaded_saved"] = name
     st.session_state.pop("confirm_delete", None)
     st.session_state["query"] = spec.get("query", "")
+    st.session_state["query_input"] = spec.get("query", "")
     for agg, field in (("type", "type"), ("folder", "folder.tree"), ("tags", "tags"), ("status", "status")):
         st.session_state[f"f_{agg}"] = spec.get("filters", {}).get(field, [])
+    components.set_meta_rows("sr", spec.get("filters", {}))
+    components.set_date_range("sr", spec.get("date_range"))
 
 
 def sidebar() -> None:

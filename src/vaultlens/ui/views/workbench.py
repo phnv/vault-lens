@@ -8,13 +8,23 @@ import streamlit as st
 from vaultlens.models import SearchSpec
 from vaultlens.search.query_builder import ALLOWED_MATCH_TYPES, ALLOWED_QUERY_FIELDS, compiled_query
 from vaultlens.search.results import parse_response
-from vaultlens.ui import services
+from vaultlens.ui import components, services
 
 be = services.backend()
 st.title("Workbench")
 level = st.radio("Level", ["Everyday", "Advanced"], horizontal=True)
 
+def _clear() -> None:
+    """Reset the query and custom-field filters (on_click callback); advanced options stay."""
+    st.session_state["wb_query"] = ""
+    components.clear_meta("wb")
+
+
 spec = SearchSpec(query=st.text_input("Query", key="wb_query"), explain=False)
+st.button("Clear", on_click=_clear, key="wb_clear")
+with st.expander("Custom fields", expanded=bool(st.session_state.get("wb_meta_rows"))):
+    components.meta_filter_editor("wb", None)
+spec.filters = components.meta_filters_from_state("wb")
 spec.match_mode = st.selectbox("Match mode", ["all", "any", "phrase"])  # type: ignore[assignment]
 
 if level == "Advanced":

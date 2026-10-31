@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import replace
+from datetime import date
 from typing import Any
 
 from ..models import SearchSpec
@@ -37,6 +39,59 @@ STRATEGIES: dict[str, dict[str, Any]] = {
         "fields": {"title": 3.0, "aliases": 2.0, "body.pt": 1.0, "body.en": 1.0},
     },
 }
+
+
+META_PREFIX = "meta."
+
+
+def date_range_spec(field_name: str, dates: Sequence[date]) -> dict[str, str] | None:
+    """Picked dates (none, start only, or start+end) -> SearchSpec.date_range, else None."""
+    if field_name not in DATE_FIELDS:
+        raise ValueError(f"date field not allowed: {field_name!r}")
+    if not dates:
+        return None
+    out = {"field": field_name, "gte": dates[0].isoformat()}
+    if len(dates) > 1:
+        out["lte"] = dates[1].isoformat()
+    return out
+
+
+def meta_filters(rows: list[tuple[str, list[str]]]) -> dict[str, list[str]]:
+    """UI rows of (custom key, values) -> SearchSpec.filters entries.
+
+    Blank keys or empty values are skipped, invalid keys are ignored (never reach Elasticsearch),
+    and repeated keys are merged (OR within a key).
+    """
+    out: dict[str, list[str]] = {}
+    for key, values in rows:
+        name = META_PREFIX + key.strip().removeprefix(META_PREFIX)
+        if not key.strip() or not values or not _META_FIELD.match(name):
+            continue
+        merged = out.setdefault(name, [])
+        merged.extend(v for v in values if v not in merged)
+    return out
+
+
+def meta_rows(filters: dict[str, list[str]]) -> list[tuple[str, list[str]]]:
+    """Inverse of meta_filters, e.g. to restore a saved search into the UI."""
+    return [
+        (name.removeprefix(META_PREFIX), list(vals))
+        for name, vals in sorted(filters.items())
+        if name.startswith(META_PREFIX) and vals
+    ]
+
+
+def meta_values_body(key: str, vault: str | None = None, size: int = 50) -> dict[str, Any]:
+    """Distinct values of one custom field (flattened `meta.<key>`), with doc counts."""
+    name = META_PREFIX + key.strip().removeprefix(META_PREFIX)
+    if not _META_FIELD.match(name):
+        raise ValueError(f"filter field not allowed: {name!r}")
+    flt = [{"term": {"vault": vault}}] if vault else []
+    return {
+        "size": 0,
+        "query": {"bool": {"filter": flt}},
+        "aggs": {"values": {"terms": {"field": name, "size": size}}},
+    }
 
 
 def _check_filter_field(name: str) -> None:

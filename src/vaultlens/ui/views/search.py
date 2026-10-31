@@ -10,33 +10,57 @@ from vaultlens.models import SearchSpec
 from vaultlens.search.query_builder import compiled_query, inbound_links_body, more_like_this_body
 from vaultlens.search.results import parse_response
 from vaultlens.store import matches_saved
-from vaultlens.ui import services
+from vaultlens.ui import components, services
 
 FACETS = {"type": "type", "folder": "folder.tree", "tags": "tags", "status": "status"}  # agg -> filter field
 ss = st.session_state
 cfg, be = services.settings(), services.backend()
 
+
+def _clear() -> None:
+    """Reset query, facet and custom-field filters, selection. Keeps Match/Sort/Size and the vault.
+
+    Runs as an on_click callback: widget-bound session keys may only be changed here."""
+    ss["query"] = ""
+    ss["query_input"] = ""
+    for agg in FACETS:
+        ss[f"f_{agg}"] = []
+    for key in ("selected_id", "loaded_saved", "confirm_delete"):
+        ss.pop(key, None)
+    components.clear_meta("sr")
+    components.clear_date("sr")
+
+
 st.title("Search")
 mode = st.radio("Mode", ["Search", "Ask"], horizontal=True, label_visibility="collapsed")
 
+ss.setdefault("query_input", ss.get("query", ""))
 with st.form("query_form"):
-    query = st.text_input("Query", value=ss.get("query", ""), placeholder="retrieval elasticsearch  (Enter to search)")
+    query = st.text_input("Query", key="query_input", placeholder="retrieval elasticsearch  (Enter to search)")
     c1, c2, c3 = st.columns(3)
     match = c1.selectbox("Match", ["all", "any", "phrase"], format_func=lambda m: {"all": "all words", "any": "any word", "phrase": "phrase"}[m])
     sort = c2.selectbox("Sort", ["relevance", "modified_desc", "created_desc", "title_asc"])
     size = c3.selectbox("Size", [10, 20, 50], index=1)
-    submitted = st.form_submit_button("Ask" if mode == "Ask" else "Search")
+    b1, b2, _ = st.columns([1, 1, 6])
+    submitted = b1.form_submit_button("Ask" if mode == "Ask" else "Search")
+    b2.form_submit_button("Clear", on_click=_clear)
 if submitted:
     ss["query"] = query
 
 active = ss.get("active_vault", "All vaults")
+# Filter widgets render later in the left column; like the facets, their values are read from
+# session_state here so the spec is complete before the search runs.
 spec = SearchSpec(
     query=ss.get("query", ""),
     vaults=[] if active == "All vaults" else [active],
     match_mode=match,
     sort=sort,
     size=size,
-    filters={field: ss.get(f"f_{agg}", []) for agg, field in FACETS.items() if ss.get(f"f_{agg}")},
+    filters={
+        **{field: ss.get(f"f_{agg}", []) for agg, field in FACETS.items() if ss.get(f"f_{agg}")},
+        **components.meta_filters_from_state("sr"),
+    },
+    date_range=components.date_range_from_state("sr"),
 )
 
 client, llm_err = services.llm()
@@ -76,6 +100,8 @@ with left:
         options = list(dict.fromkeys([k for k, _ in buckets] + selected))
         counts = dict(buckets)
         st.multiselect(agg.title(), options, key=f"f_{agg}", format_func=lambda k, c=counts: f"{k} ({c.get(k, 0)})")
+    components.meta_filter_editor("sr", None if active == "All vaults" else active)
+    components.date_filter_widgets("sr")
     st.caption("Counts come from terms aggregations and update with every filter.")
     store = services.store()
     loaded = next((s for s in store.saved_searches() if s["name"] == ss.get("loaded_saved")), None)
@@ -103,7 +129,7 @@ with mid:
         with st.container(border=True):
             if st.button(hit.title or hit.path, key=f"sel_{hit.doc_id}"):
                 ss["selected_id"] = hit.doc_id
-            st.caption(f"{hit.path} · {hit.type or '-'} · {', '.join(hit.tags[:4])}")
+            st.caption(f"{hit.path} · {hit.type or '-'} · {', '.join(hit.tags[:4])}" + (f" · mod {hit.modified[:10]}" if hit.modified else ""))
             if hit.snippet:
                 st.markdown(f"…{hit.snippet}…", unsafe_allow_html=True)  # snippet is html-encoded by ES
 
@@ -120,6 +146,8 @@ with right:
                 if uri:
                     st.link_button(label, uri)
         st.markdown(f"**Frontmatter** · id `{chosen.note_id or '-'}` · type `{chosen.type or '-'}` · status `{chosen.status or '-'}` · modified `{chosen.modified or '-'}`")
+        with st.expander("Dates"):
+            st.markdown(f"Created `{chosen.created or '-'}`  \nModified `{chosen.modified or '-'}`  \nIndexed `{chosen.indexed_at or '-'}`")
         if chosen.chunks:
             st.markdown("**Best chunks**")
             for c in chosen.chunks:

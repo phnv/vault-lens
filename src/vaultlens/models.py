@@ -121,6 +121,8 @@ class Hit:
     status: str | None = None
     tags: list[str] = field(default_factory=list)
     modified: str | None = None
+    created: str | None = None
+    indexed_at: str | None = None
     note_id: str | None = None
     aliases: list[str] = field(default_factory=list)
     links_out: list[str] = field(default_factory=list)

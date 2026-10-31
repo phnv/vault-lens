@@ -8,6 +8,8 @@ from ..indexing.service import IndexService
 from ..llm.base import LLMClient, LLMError
 from ..llm.factory import get_client
 from ..search.backend import SearchBackend
+from ..search.query_builder import meta_values_body
+from ..search.results import parse_response
 from ..store import JsonStore
 
 
@@ -25,6 +27,13 @@ def backend() -> SearchBackend:
 @st.cache_resource
 def store() -> JsonStore:
     return JsonStore(settings().data_dir)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def meta_values(key: str, vault: str | None) -> list[tuple[str, int]]:
+    """Distinct (value, count) for a custom field; short TTL so a sync shows up quickly."""
+    raw = backend().raw_search(meta_values_body(key, vault))
+    return parse_response(raw).facets.get("values", [])
 
 
 @st.cache_resource
