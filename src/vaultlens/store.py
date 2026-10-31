@@ -8,6 +8,15 @@ from pathlib import Path
 from typing import Any
 
 
+def matches_saved(saved_spec: dict[str, Any], query: str, filters: dict[str, list[str]]) -> bool:
+    """True when the current query and filters equal a saved spec (filter order and empty lists ignored)."""
+
+    def norm(f: dict[str, list[str]] | None) -> dict[str, set[str]]:
+        return {k: set(v) for k, v in (f or {}).items() if v}
+
+    return saved_spec.get("query", "") == query and norm(saved_spec.get("filters")) == norm(filters)
+
+
 class JsonStore:
     def __init__(self, data_dir: str) -> None:
         self.dir = Path(data_dir)

@@ -9,7 +9,9 @@ from vaultlens.ui import services
 st.set_page_config(page_title="Vault Search", page_icon="🔎", layout="wide")
 
 
-def _load_saved(spec: dict) -> None:
+def _load_saved(name: str, spec: dict) -> None:
+    st.session_state["loaded_saved"] = name
+    st.session_state.pop("confirm_delete", None)
     st.session_state["query"] = spec.get("query", "")
     for agg, field in (("type", "type"), ("folder", "folder.tree"), ("tags", "tags"), ("status", "status")):
         st.session_state[f"f_{agg}"] = spec.get("filters", {}).get(field, [])
@@ -26,7 +28,7 @@ def sidebar() -> None:
         st.subheader("Saved searches")
         saved = services.store().saved_searches()
         for item in saved:
-            st.button(item["name"], key=f"saved_{item['name']}", on_click=_load_saved, args=(item["spec"],))
+            st.button(item["name"], key=f"saved_{item['name']}", on_click=_load_saved, args=(item["name"], item["spec"]))
         if not saved:
             st.caption("None yet. Save one from the Search page.")
 

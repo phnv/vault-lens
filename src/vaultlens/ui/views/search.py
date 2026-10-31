@@ -9,6 +9,7 @@ from vaultlens.llm.base import LLMError
 from vaultlens.models import SearchSpec
 from vaultlens.search.query_builder import compiled_query, inbound_links_body, more_like_this_body
 from vaultlens.search.results import parse_response
+from vaultlens.store import matches_saved
 from vaultlens.ui import services
 
 FACETS = {"type": "type", "folder": "folder.tree", "tags": "tags", "status": "status"}  # agg -> filter field
@@ -76,8 +77,25 @@ with left:
         counts = dict(buckets)
         st.multiselect(agg.title(), options, key=f"f_{agg}", format_func=lambda k, c=counts: f"{k} ({c.get(k, 0)})")
     st.caption("Counts come from terms aggregations and update with every filter.")
-    if ss.get("query") and st.button("Save search"):
-        services.store().save_search(ss["query"], spec.to_dict())
+    store = services.store()
+    loaded = next((s for s in store.saved_searches() if s["name"] == ss.get("loaded_saved")), None)
+    if loaded and matches_saved(loaded["spec"], spec.query, spec.filters):
+        if ss.get("confirm_delete") == loaded["name"]:
+            st.warning(f"Delete saved search '{loaded['name']}'?")
+            d1, d2 = st.columns(2)
+            if d1.button("Confirm delete", type="primary"):
+                store.delete_search(loaded["name"])
+                ss.pop("loaded_saved", None)
+                ss.pop("confirm_delete", None)
+                st.rerun()  # the sidebar list renders before this page
+            if d2.button("Cancel"):
+                ss.pop("confirm_delete", None)
+                st.rerun()
+        elif st.button("Delete search"):
+            ss["confirm_delete"] = loaded["name"]
+            st.rerun()
+    elif ss.get("query") and st.button("Save search"):
+        store.save_search(ss["query"], spec.to_dict())
 
 with mid:
     st.caption(f"{resp.total:,} results · {resp.took_ms} ms")
