@@ -25,11 +25,11 @@ default_args = {
 dag = DAG(
     dag_id="vaultlens_sync_notes",
     default_args=default_args,
-    schedule_interval="0 0 * * *",
+    schedule_interval="*/15 * * * *",
     catchup=False,
     max_active_runs=1,
-    description="Synchronizes personal markdown notes into Elasticsearch and PostgreSQL catalog",
-    tags=["vaultlens", "search", "elasticsearch", "postgres"],
+    description="Incrementally synchronizes personal markdown notes into Elasticsearch and PostgreSQL catalog (every 15 minutes)",
+    tags=["vaultlens", "search", "elasticsearch", "postgres", "incremental"],
 )
 
 task_check_create_table = PythonOperator(

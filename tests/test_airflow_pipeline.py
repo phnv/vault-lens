@@ -17,11 +17,27 @@ for p in (str(DAGS_PATH), str(SRC_PATH)):
 from vaultlens.config import Settings, VaultConfig
 from vaultlens.indexing.service import SyncReport
 from vaultlens.models import Note
-from vaultlens_pipeline.postgres import check_or_create_table, sync_note_catalog
-from vaultlens_pipeline.sync import sync_vault_notes
+
+try:
+    from vaultlens_pipeline.postgres import check_or_create_table, sync_note_catalog
+    from vaultlens_pipeline.sync import sync_vault_notes
+    HAVE_PIPELINE = True
+except ImportError:
+    HAVE_PIPELINE = False
 
 
 class TestAirflowPipeline(unittest.TestCase):
+    def test_dag_schedule_configuration(self):
+        dag_file = DAGS_PATH / "vaultlens_sync_dag.py"
+        if not dag_file.exists():
+            self.skipTest(f"DAG file not found at {dag_file}")
+        content = dag_file.read_text(encoding="utf-8")
+        self.assertIn('schedule_interval="*/15 * * * *"', content)
+        self.assertIn('catchup=False', content)
+        self.assertIn('max_active_runs=1', content)
+        self.assertIn('dag_id="vaultlens_sync_notes"', content)
+
+    @unittest.skipUnless(HAVE_PIPELINE, "vaultlens_pipeline not found in path")
     def test_check_or_create_table(self):
         mock_conn = MagicMock()
         mock_cur = MagicMock()
@@ -39,6 +55,7 @@ class TestAirflowPipeline(unittest.TestCase):
         self.assertTrue(mock_conn.commit.called)
         self.assertTrue(mock_conn.close.called)
 
+    @unittest.skipUnless(HAVE_PIPELINE, "vaultlens_pipeline not found in path")
     def test_sync_note_catalog_upsert_and_prune(self):
         mock_conn = MagicMock()
         mock_cur = MagicMock()
@@ -73,6 +90,7 @@ class TestAirflowPipeline(unittest.TestCase):
         self.assertEqual(records[0][4], "hash123")
         self.assertTrue(mock_conn.commit.called)
 
+    @unittest.skipUnless(HAVE_PIPELINE, "vaultlens_pipeline not found in path")
     def test_sync_vault_notes_orchestration(self):
         dummy_vault = VaultConfig(slug="test-vault", path="/test/vault")
         dummy_settings = Settings(

@@ -5,3 +5,4 @@ services:
     volumes:
       - ./src:/app/src          # live code; Streamlit reloads on save
       - ./tests:/app/tests
+      - ./vault-lens-airflow:/app/vault-lens-airflow:ro
