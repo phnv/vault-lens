@@ -21,12 +21,13 @@ class VaultConfig:
 
 @dataclass(frozen=True)
 class LLMConfig:
-    default_provider: str = "off"  # off | ollama | gemini
+    default_provider: str = "off"  # off | ollama | gemini | groq
     ollama_url: str = "http://host.docker.internal:11434"
     ollama_model: str = "qwen2.5:1.5b-instruct"
     gemini_api_key: str = field(default="", repr=False)  # never log or display
     gemini_model: str = "gemini-2.5-flash"
-    gemini_base_url: str = "https://generativelanguage.googleapis.com"
+    groq_api_key: str = field(default="", repr=False)  # never log or display
+    groq_model: str = "openai/gpt-oss-120b"
     timeout_s: float = 120.0
 
 
@@ -68,6 +69,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         ollama_model=env.get("OLLAMA_MODEL", LLMConfig.ollama_model),
         gemini_api_key=env.get("GEMINI_API_KEY", ""),
         gemini_model=env.get("GEMINI_MODEL", LLMConfig.gemini_model),
+        groq_api_key=env.get("GROQ_API_KEY", ""),
+        groq_model=env.get("GROQ_MODEL", LLMConfig.groq_model),
         timeout_s=float(env.get("LLM_TIMEOUT", env.get("LLM_TIMEOUT_S", LLMConfig.timeout_s))),
     )
     return Settings(

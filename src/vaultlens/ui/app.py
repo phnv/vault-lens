@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from vaultlens.llm.base import OFF_DEVICE, PROVIDERS
+from vaultlens.llm.base import GROQ_MODELS, OFF_DEVICE, PROVIDERS
 from vaultlens.ui import components, services
 
 st.set_page_config(page_title="Vault Search", page_icon="🔎", layout="wide")
@@ -47,11 +47,20 @@ def sidebar() -> None:
         st.radio(
             "Provider", PROVIDERS, key="llm_provider",
             index=PROVIDERS.index(cfg.llm.default_provider) if cfg.llm.default_provider in PROVIDERS else 0,
-            help="'off' = plain Elasticsearch search. Ask mode needs ollama or gemini.",
+            help="'off' = plain Elasticsearch search. Ask mode needs ollama, gemini, or groq.",
         )
         prov = services.provider()
+        if prov == "groq":
+            st.radio(
+                "Groq model",
+                GROQ_MODELS,
+                key="groq_model",
+                index=GROQ_MODELS.index(cfg.llm.groq_model) if cfg.llm.groq_model in GROQ_MODELS else 0,
+                help="Auto-falls back to the other Groq model on HTTP 429 rate limits.",
+            )
         if prov in OFF_DEVICE:
-            st.warning("Ask mode sends excerpts of matching notes to Google's API.")
+            api_label = "Groq's API" if prov == "groq" else "Google's API"
+            st.warning(f"Ask mode sends excerpts of matching notes to {api_label}.")
         client, err = services.llm()
         if err:
             st.error(err)

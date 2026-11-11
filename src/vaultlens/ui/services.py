@@ -45,9 +45,13 @@ def provider() -> str:
     return st.session_state.get("llm_provider", settings().llm.default_provider)
 
 
+def groq_model() -> str:
+    return st.session_state.get("groq_model", settings().llm.groq_model)
+
+
 def llm() -> tuple[LLMClient | None, str | None]:
     """(client or None, error message or None). Provider 'off' returns (None, None)."""
     try:
-        return get_client(provider(), settings().llm), None
+        return get_client(provider(), settings().llm, groq_model=groq_model()), None
     except LLMError as exc:
         return None, str(exc)

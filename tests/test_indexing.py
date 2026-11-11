@@ -18,7 +18,15 @@ def test_settings_from_env_and_yaml(tmp_path=None):
     with tempfile.TemporaryDirectory() as d:
         cfg = Path(d) / "c.yaml"
         cfg.write_text("vaults:\n  - {slug: s, path: /v, ignore: [x]}\nindex: {alias: notes, chunk_max_chars: 900}\n")
-        s = load_settings({"CONFIG_PATH": str(cfg), "ES_URL": "http://h:9200", "GEMINI_API_KEY": "SECRET-KEY-123", "LLM_DEFAULT_PROVIDER": "ollama"})
+        s = load_settings({
+            "CONFIG_PATH": str(cfg),
+            "ES_URL": "http://h:9200",
+            "GEMINI_API_KEY": "SECRET-KEY-123",
+            "GROQ_API_KEY": "GROQ-SECRET-456",
+            "GROQ_MODEL": "qwen/qwen3.8-27b",
+            "LLM_DEFAULT_PROVIDER": "ollama",
+        })
     assert s.vault("s").ignore == ("x",) and s.chunk_max_chars == 900
     assert s.es_url == "http://h:9200" and s.llm.default_provider == "ollama"
-    assert "SECRET-KEY-123" not in repr(s)  # api key must never leak through repr/logging
+    assert s.llm.groq_model == "qwen/qwen3.8-27b"
+    assert "SECRET-KEY-123" not in repr(s) and "GROQ-SECRET-456" not in repr(s)

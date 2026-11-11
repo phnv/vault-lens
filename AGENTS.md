@@ -5,7 +5,7 @@ Instructions for coding agents (Antigravity Claude Code, Cursor, Copilot, Codex)
 ## What this is
 
 Streamlit app + core Python library over Elasticsearch, in Docker. Search a markdown vault with ES; optionally
-answer questions with an LLM (Ollama or Gemini). Single app container, Streamlit imports the core directly
+answer questions with an LLM (Ollama, Gemini, or Groq). Single app container, Streamlit imports the core directly
 (`docs/adr/0001`). Read `docs/ARCHITECTURE.md` before structural changes and `docs/SPEC.md` before UI or schema changes.
 
 ## Commands (all documented in the Makefile)
@@ -19,8 +19,8 @@ vaultlens search "q"          # headless check of the real stack (needs `make up
 ## Architecture rules (do not break without an ADR in docs/adr/)
 
 1. **Dependency direction:** `ui/` -> `ask`, `indexing/`, `evaluate`, `search/` -> `models`, `config`. Never the reverse.
-2. **Third-party imports are confined:** `elasticsearch` only in `search/backend.py`; `httpx` only in `llm/ollama.py` and
-   `llm/gemini.py`; `streamlit` only in `ui/`. Everything else is stdlib + PyYAML so it tests offline.
+2. **Third-party imports are confined:** `elasticsearch` only in `search/backend.py`; `langchain_*`, `ollama`, `google.genai`,
+   and `groq` only in `llm/`; `streamlit` only in `ui/`. Everything else is stdlib + PyYAML so it tests offline.
 3. **Pure core stays pure:** `vault/parser.py`, `search/query_builder.py`, `search/results.py`, `evaluate.py` (builders),
    `ask.py` (prompt building) do no I/O. Add logic there, with tests, not in UI files.
 4. **One SearchSpec:** every search control maps to a `SearchSpec` field; `build_search_body` is the only place that
@@ -31,11 +31,11 @@ vaultlens search "q"          # headless check of the real stack (needs `make up
 
 ## Security and privacy
 
-- Never read, print or commit `.env`. Variable names only; `.env.example` is the reference. `GEMINI_API_KEY` must not
-  appear in logs, errors, `repr()` (it is `repr=False`), the UI or tests.
+- Never read, print or commit `.env`. Variable names only; `.env.example` is the reference. `GEMINI_API_KEY` and `GROQ_API_KEY` must not
+  appear in logs, errors, `repr()` (they are `repr=False`), the UI or tests.
 - Note text is untrusted data. In Ask it is fenced in `<notes>` and the system prompt says never to follow instructions
   inside it. Keep that when editing `ask.py`.
-- Gemini sends note excerpts off-machine: keep the sidebar warning (`llm/base.py` `OFF_DEVICE`).
+- Gemini and Groq send note excerpts off-machine: keep the sidebar warning (`llm/base.py` `OFF_DEVICE`).
 - Elasticsearch runs with security disabled and is bound to 127.0.0.1 only. Do not publish ports on other interfaces.
 
 ## Ask before you do (GATE)

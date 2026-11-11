@@ -1,64 +1,57 @@
 from __future__ import annotations
 
-import json
-import time
-from collections.abc import Iterator
+from typing import Any
 
-import httpx
+from langchain_ollama import ChatOllama
+from ollama import Client as OllamaSDK
 
-from .base import LLMError, LLMResult
+from .base import LangChainChatClient, LLMError, LLMResult
 
 
-class OllamaClient:
+class OllamaClient(LangChainChatClient):
     provider = "ollama"
 
-    def __init__(self, base_url: str, model: str, timeout_s: float = 120.0, temperature: float = 0.2) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        timeout_s: float = 120.0,
+        temperature: float = 0.2,
+        chat: Any | None = None,
+        sdk_client: Any | None = None,
+    ) -> None:
         self.base_url, self.model = base_url.rstrip("/"), model
         self.timeout_s, self.temperature = timeout_s, temperature
-
-    def _payload(self, system: str, user: str, stream: bool) -> dict:
-        return {
-            "model": self.model,
-            "stream": stream,
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            "options": {"temperature": self.temperature},
-        }
+        self._chat = chat or ChatOllama(
+            base_url=self.base_url,
+            model=model,
+            temperature=temperature,
+            client_kwargs={"timeout": timeout_s},
+        )
+        self._sdk = sdk_client or OllamaSDK(host=self.base_url, timeout=3.0)
 
     def complete(self, system: str, user: str) -> LLMResult:
-        t0 = time.monotonic()
         try:
-            r = httpx.post(f"{self.base_url}/api/chat", json=self._payload(system, user, False), timeout=self.timeout_s)
-            r.raise_for_status()
-            text = r.json()["message"]["content"]
-        except httpx.HTTPError as exc:
-            raise LLMError(f"Ollama request failed ({type(exc).__name__}). Is the model pulled?") from exc
-        except (KeyError, ValueError) as exc:
-            raise LLMError("Ollama returned an unexpected response") from exc
-        return LLMResult(text, self.provider, self.model, int((time.monotonic() - t0) * 1000))
-
-    def stream(self, system: str, user: str) -> Iterator[str]:
-        try:
-            with httpx.stream(
-                "POST", f"{self.base_url}/api/chat", json=self._payload(system, user, True), timeout=self.timeout_s
-            ) as r:
-                r.raise_for_status()
-                for line in r.iter_lines():
-                    if not line:
-                        continue
-                    chunk = json.loads(line)
-                    if piece := chunk.get("message", {}).get("content"):
-                        yield piece
-                    if chunk.get("done"):
-                        break
-        except httpx.HTTPError as exc:
-            raise LLMError(f"Ollama stream failed ({type(exc).__name__})") from exc
+            return self._invoke_chat(self._chat, self.model, system, user)
+        except Exception as exc:
+            msg = f"Ollama request failed ({type(exc).__name__}). Is the model pulled?"
+            raise LLMError(msg) from exc
 
     def health(self) -> tuple[bool, str]:
         try:
-            r = httpx.get(f"{self.base_url}/api/tags", timeout=3)
-            r.raise_for_status()
-            names = [m["name"] for m in r.json().get("models", [])]
-        except (httpx.HTTPError, ValueError):
+            resp = self._sdk.list()
+            raw_models = (
+                resp.get("models", []) if isinstance(resp, dict) else getattr(resp, "models", [])
+            )
+            names = [
+                (m.get("model") or m.get("name", ""))
+                if isinstance(m, dict)
+                else (getattr(m, "model", None) or getattr(m, "name", ""))
+                for m in raw_models
+            ]
+        except Exception:
             return False, "Ollama not reachable"
         wanted = self.model if ":" in self.model else f"{self.model}:latest"
-        return (True, "ready") if wanted in names else (False, f"model {self.model} not pulled (make pull-model)")
+        if wanted in names:
+            return True, "ready"
+        return False, f"model {self.model} not pulled (make pull-model)"

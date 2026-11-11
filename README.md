@@ -4,7 +4,7 @@ Local-first search workbench for markdown vaults (Obsidian-style folders of `.md
 Elasticsearch does the searching; an optional LLM answers questions from the matching notes.
 
 - **Search**: keyword search with filters, facets, highlights, "more like this", link counts. No LLM involved.
-- **Ask**: the same retrieval, then an LLM (local Ollama or Gemini, your choice) answers with citations.
+- **Ask**: the same retrieval, then an LLM (local Ollama, Gemini, or Groq) answers with citations.
 - **Workbench**: see and tune the exact Elasticsearch query, explain/profile it, compare analyzers.
 - **Evaluate**: judge a set of queries once, then measure each ranking change (nDCG@10).
 - Vaults are mounted **read-only**; the app never modifies your notes.
@@ -21,12 +21,24 @@ make sync                     # incremental index of the vault
 open http://localhost:8501
 ```
 
+### Manual Verification
+
+Once Docker Desktop WSL integration is running:
+
+```bash
+make up
+docker compose exec app vaultlens ask "What is in my vault?" --provider ollama
+docker compose exec app vaultlens ask "What is in my vault?" --provider gemini
+docker compose exec app vaultlens ask "What is in my vault?" --provider groq
+```
+
 Ask mode (optional):
 
 | Provider | Setup |
 |----------|-------|
 | `ollama` (Windows host) | Run Ollama natively on Windows. The container connects via `http://host.docker.internal:11434`. Pull model on host: `ollama pull qwen2.5:1.5b-instruct`. |
 | `gemini` (API) | Set `GEMINI_API_KEY` in `.env`, pick `gemini` in sidebar. Note excerpts leave your machine. |
+| `groq` (API) | Set `GROQ_API_KEY` in `.env`, pick `groq` in sidebar (`openai/gpt-oss-120b` or `qwen/qwen3.8-27b`, with automatic fallback and 429 retry). Note excerpts leave your machine. |
 | `off` (default) | Plain Elasticsearch search only (zero LLM overhead). |
 
 ## Configuration
@@ -36,10 +48,11 @@ Ask mode (optional):
 | `VAULT_PATH` | `/mnt/c/Users/Home/Documents/notes` | Host path to Markdown notes, mounted read-only (`:ro`) |
 | `AIRFLOW_UID` | `1000` | Host WSL User ID to avoid Airflow volume permission issues |
 | `ES_VERSION`, `ES_HEAP` | `8.17.0`, `512m` | Elasticsearch Docker tag and JVM heap cap |
-| `LLM_PROVIDER` | `ollama` | Active provider (`off`, `ollama`, or `gemini`) |
+| `LLM_PROVIDER` | `ollama` | Active provider (`off`, `ollama`, `gemini`, or `groq`) |
 | `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | Endpoint to host Windows Ollama instance |
 | `OLLAMA_MODEL` | `qwen2.5:1.5b-instruct` | Compact LLM model suited for WSL memory limits |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | empty, `gemini-2.5-flash` | Gemini API credentials |
+| `GROQ_API_KEY`, `GROQ_MODEL` | empty, `openai/gpt-oss-120b` | Groq API credentials (`openai/gpt-oss-120b` or `qwen/qwen3.8-27b`) |
 
 More vaults: add a read-only mount in `docker-compose.yml`, then an entry in `config/vaultlens.yaml`.
 

@@ -32,7 +32,8 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("--show-query", action="store_true")
     a = sub.add_parser("ask")
     a.add_argument("question")
-    a.add_argument("--provider", choices=["ollama", "gemini"], default="ollama")
+    a.add_argument("--provider", choices=["ollama", "gemini", "groq"], default="ollama")
+    a.add_argument("--model", default=None)
     e = sub.add_parser("eval")
     e.add_argument("--judgments", default="config/judged_queries.yaml")
     e.add_argument("--strategies", nargs="+", default=["A", "B", "C"])
@@ -83,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
         from .llm.factory import get_client
 
         try:
-            llm = get_client(args.provider, settings.llm)
+            llm = get_client(args.provider, settings.llm, groq_model=args.model)
             result = AskService(backend.search, llm).answer(args.question)  # type: ignore[arg-type]
         except LLMError as exc:
             print(f"LLM error: {exc}", file=sys.stderr)

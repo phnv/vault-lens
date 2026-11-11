@@ -66,7 +66,7 @@ spec = SearchSpec(
 client, llm_err = services.llm()
 if mode == "Ask":
     if client is None:
-        st.info(llm_err or "Choose an LLM provider (ollama or gemini) in the sidebar to use Ask.")
+        st.info(llm_err or "Choose an LLM provider (ollama, gemini, or groq) in the sidebar to use Ask.")
     elif submitted and ss.get("query"):
         try:
             sources, stream = AskService(be.search, client).stream(ss["query"], spec)
