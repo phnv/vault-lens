@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 try:
     import psycopg2
@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 def get_postgres_connection():
     """Connects to PostgreSQL inside docker network with localhost fallback."""
     if psycopg2 is None:
-        raise ImportError("psycopg2 is required for PostgreSQL catalog operations. Ensure it is installed.")
+        raise ImportError(
+            "psycopg2 is required for PostgreSQL catalog operations. Ensure it is installed."
+        )
 
     host = os.getenv("POSTGRES_HOST", "postgres")
     port = int(os.getenv("POSTGRES_PORT", "5432"))
@@ -100,7 +102,7 @@ def sync_note_catalog(vault: str, notes: list[Note]) -> dict[str, int]:
                     for n in notes
                 ]
                 insert_sql = """
-                    INSERT INTO vault_notes (doc_id, vault, path, title, content_hash, modified_at, indexed_at)
+                    INSERT INTO vault_notes (doc_id, vault, path, title, content_hash, modified_at)
                     VALUES %s
                     ON CONFLICT (doc_id) DO UPDATE SET
                         vault = EXCLUDED.vault,
@@ -133,7 +135,9 @@ def sync_note_catalog(vault: str, notes: list[Note]) -> dict[str, int]:
                 deleted = cur.rowcount if cur.rowcount != -1 else 0
 
         conn.commit()
-        logger.info("Catalog sync for vault '%s': %d upserted, %d pruned.", vault, upserted, deleted)
+        logger.info(
+            "Catalog sync for vault '%s': %d upserted, %d pruned.", vault, upserted, deleted
+        )
         return {"upserted": upserted, "deleted": deleted}
     except Exception as exc:
         conn.rollback()

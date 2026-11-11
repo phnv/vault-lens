@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import re
 import sys
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+from vaultlens.config import Settings, VaultConfig
+from vaultlens.indexing.service import SyncReport
+from vaultlens.models import Note
 
 # Add airflow dags and src to path for testing vaultlens_pipeline
 ROOT_DIR = Path(__file__).parent.parent
@@ -13,10 +18,6 @@ SRC_PATH = ROOT_DIR / "src"
 for p in (str(DAGS_PATH), str(SRC_PATH)):
     if p not in sys.path:
         sys.path.insert(0, p)
-
-from vaultlens.config import Settings, VaultConfig
-from vaultlens.indexing.service import SyncReport
-from vaultlens.models import Note
 
 try:
     from vaultlens_pipeline.postgres import check_or_create_table, sync_note_catalog
@@ -83,7 +84,16 @@ class TestAirflowPipeline(unittest.TestCase):
         self.assertEqual(stats, {"upserted": 1, "deleted": 1})
         self.assertTrue(mock_exec_val.called)
         args = mock_exec_val.call_args[0]
+        insert_sql = args[1]
         records = args[2]
+        cols_match = re.search(r"INSERT INTO\s+\w+\s*\(([^)]+)\)", insert_sql)
+        self.assertIsNotNone(cols_match)
+        target_cols = [c.strip() for c in cols_match.group(1).split(",")]
+        self.assertEqual(
+            target_cols,
+            ["doc_id", "vault", "path", "title", "content_hash", "modified_at"],
+        )
+        self.assertEqual(len(target_cols), len(records[0]))
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0][0], "personal-vault:path:note1.md")
         self.assertEqual(records[0][1], "personal-vault")
@@ -113,11 +123,16 @@ class TestAirflowPipeline(unittest.TestCase):
         mock_svc.load_notes.return_value = ([], [])
         mock_svc.sync.return_value = dummy_report
 
-        with patch("vaultlens_pipeline.sync.load_settings", return_value=dummy_settings), \
-             patch("vaultlens_pipeline.sync.SearchBackend"), \
-             patch("vaultlens_pipeline.sync.JsonStore"), \
-             patch("vaultlens_pipeline.sync.IndexService", return_value=mock_svc), \
-             patch("vaultlens_pipeline.sync.sync_note_catalog", return_value={"upserted": 5, "deleted": 0}):
+        with (
+            patch("vaultlens_pipeline.sync.load_settings", return_value=dummy_settings),
+            patch("vaultlens_pipeline.sync.SearchBackend"),
+            patch("vaultlens_pipeline.sync.JsonStore"),
+            patch("vaultlens_pipeline.sync.IndexService", return_value=mock_svc),
+            patch(
+                "vaultlens_pipeline.sync.sync_note_catalog",
+                return_value={"upserted": 5, "deleted": 0},
+            ),
+        ):
             out = sync_vault_notes("test-vault")
 
         self.assertEqual(out["status"], "success")
