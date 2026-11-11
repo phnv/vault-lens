@@ -10,4 +10,8 @@ vaults:
 
 index:
   alias: notes
+  parser: default
+  chunker: heading
   chunk_max_chars: 1500
+  chunk_overlap: 0
+  embedding_model: "off"

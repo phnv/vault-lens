@@ -23,6 +23,10 @@
     }
   },
   "mappings": {
+    "_meta": {
+      "mapping_version": 1,
+      "embedding_model": "off"
+    },
     "dynamic": "strict",
     "properties": {
       "vault": {"type": "keyword"},

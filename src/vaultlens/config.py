@@ -5,6 +5,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -36,7 +37,11 @@ class Settings:
     es_url: str = "http://elasticsearch:9200"
     es_alias: str = "notes"
     data_dir: str = "/data"
+    parser: str = "default"
+    chunker: str = "heading"
     chunk_max_chars: int = 1500
+    chunk_overlap: int = 0
+    embedding_model: str = "off"
     vaults: tuple[VaultConfig, ...] = ()
     llm: LLMConfig = LLMConfig()
 
@@ -60,6 +65,13 @@ def _load_vaults(path: Path) -> tuple[tuple[VaultConfig, ...], dict]:
     return tuple(vaults), raw.get("index", {})
 
 
+def _env_or(env: Mapping[str, str], key: str, fallback: Any) -> Any:
+    val = env.get(key)
+    if val not in (None, ""):
+        return val
+    return "off" if fallback is False else fallback
+
+
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     env = os.environ if env is None else env
     vaults, index_cfg = _load_vaults(Path(env.get("CONFIG_PATH", "config/vaultlens.yaml")))
@@ -74,10 +86,24 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         timeout_s=float(env.get("LLM_TIMEOUT", env.get("LLM_TIMEOUT_S", LLMConfig.timeout_s))),
     )
     return Settings(
-        es_url=env.get("ES_URL", Settings.es_url),
-        es_alias=env.get("ES_ALIAS", index_cfg.get("alias", Settings.es_alias)),
-        data_dir=env.get("DATA_DIR", Settings.data_dir),
-        chunk_max_chars=int(index_cfg.get("chunk_max_chars", Settings.chunk_max_chars)),
+        es_url=_env_or(env, "ES_URL", Settings.es_url),
+        es_alias=_env_or(env, "ES_ALIAS", index_cfg.get("alias", Settings.es_alias)),
+        data_dir=_env_or(env, "DATA_DIR", Settings.data_dir),
+        parser=str(_env_or(env, "PARSER", index_cfg.get("parser", Settings.parser))),
+        chunker=str(_env_or(env, "CHUNKER", index_cfg.get("chunker", Settings.chunker))),
+        chunk_max_chars=int(
+            _env_or(
+                env, "CHUNK_MAX_CHARS", index_cfg.get("chunk_max_chars", Settings.chunk_max_chars)
+            )
+        ),
+        chunk_overlap=int(
+            _env_or(env, "CHUNK_OVERLAP", index_cfg.get("chunk_overlap", Settings.chunk_overlap))
+        ),
+        embedding_model=str(
+            _env_or(
+                env, "EMBEDDING_MODEL", index_cfg.get("embedding_model", Settings.embedding_model)
+            )
+        ),
         vaults=vaults,
         llm=llm,
     )

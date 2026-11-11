@@ -48,9 +48,9 @@ def scan_vault(vault: VaultConfig) -> Iterator[RawFile]:
             yield RawFile(rel, text, full.stat().st_mtime)
 
 
-def diff_hashes(local: dict[str, str], indexed: dict[str, str]) -> ScanDiff:
+def diff_hashes(local: dict[str, str], indexed: dict[str, str], force: bool = False) -> ScanDiff:
     """Both args map doc_id -> content_hash."""
     new = sorted(k for k in local if k not in indexed)
-    changed = sorted(k for k in local if k in indexed and local[k] != indexed[k])
+    changed = sorted(k for k in local if k in indexed and (force or local[k] != indexed[k]))
     removed = sorted(k for k in indexed if k not in local)
     return ScanDiff(new, changed, removed, unchanged=len(local) - len(new) - len(changed))

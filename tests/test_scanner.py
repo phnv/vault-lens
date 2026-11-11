@@ -28,3 +28,8 @@ def test_scan_missing_root_raises():
 def test_diff_hashes():
     d = diff_hashes({"a": "1", "b": "2", "c": "3"}, {"a": "1", "b": "X", "z": "9"})
     assert (d.new, d.changed, d.removed, d.unchanged) == (["c"], ["b"], ["z"], 1)
+
+
+def test_diff_hashes_force_marks_unchanged_as_changed():
+    d = diff_hashes({"a": "1", "b": "2", "c": "3"}, {"a": "1", "b": "X", "z": "9"}, force=True)
+    assert (d.new, d.changed, d.removed, d.unchanged) == (["c"], ["a", "b"], ["z"], 0)

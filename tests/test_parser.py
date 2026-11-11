@@ -1,6 +1,19 @@
 from pathlib import Path
 
-from vaultlens.vault.parser import chunk_markdown, extract_links, mask_code, parse_note, split_frontmatter
+import pytest
+
+import vaultlens.vault.parser as parser_mod
+from vaultlens.models import Chunk
+from vaultlens.vault.parser import (
+    CHUNKERS,
+    chunk_markdown,
+    extract_links,
+    get_chunker,
+    get_parser,
+    mask_code,
+    parse_note,
+    split_frontmatter,
+)
 
 FIX = Path(__file__).parent / "fixtures" / "vault"
 
@@ -28,7 +41,11 @@ def test_tags_normalised_from_list_string_and_inline():
 
 def test_links_internal_external_and_code_ignored():
     n = _note("10-Projects/dayo/dayo-notes-server.md")
-    assert n.links_out == ["elasticsearch analyzers", "30-resources/search/elasticsearch analyzers", "vault-discovery"]
+    assert n.links_out == [
+        "elasticsearch analyzers",
+        "30-resources/search/elasticsearch analyzers",
+        "vault-discovery",
+    ]
     assert n.urls == ["https://example.com/docs"]
     m = _note("30-Resources/search/Elasticsearch analyzers.md")
     assert m.links_out == ["../dayo/dayo-notes-server"]  # png embed, code-block links dropped
@@ -43,7 +60,8 @@ def test_note_without_frontmatter_uses_path_id_and_mtime():
 
 
 def test_title_precedence_h1_over_filename():
-    assert _note("30-Resources/search/Elasticsearch analyzers.md").title == "Elasticsearch analyzers for PT/EN notes"
+    note = _note("30-Resources/search/Elasticsearch analyzers.md")
+    assert note.title == "Elasticsearch analyzers for PT/EN notes"
 
 
 def test_invalid_frontmatter_is_survivable():
@@ -67,7 +85,8 @@ def test_long_section_is_split_under_max_chars():
 
 
 def test_mask_code_and_extract_links():
-    masked = mask_code("a `[[x]]` b\n```\n[[y]]\n```\n[[z|alias]] [t](p%20q.md#h) [m](mailto:a@b.c)")
+    raw = "a `[[x]]` b\n```\n[[y]]\n```\n[[z|alias]] [t](p%20q.md#h) [m](mailto:a@b.c)"
+    masked = mask_code(raw)
     assert extract_links(masked) == (["z", "p q"], [])
 
 
@@ -76,3 +95,58 @@ def test_content_hash_changes_with_content():
     b = parse_note("v", "a.md", "two")
     assert a.content_hash != b.content_hash
     assert a.content_hash == parse_note("v", "a.md", "one").content_hash
+
+
+def test_content_hash_changes_with_pipeline_versions_and_params(monkeypatch):
+    raw = "# Heading\n\n" + ("paragraph text here. " * 40) + "\n\n" + ("second paragraph. " * 40)
+    base = parse_note("v", "a.md", raw, chunk_max_chars=1500)
+
+    # Chunk parameter changes automatically invalidate content_hash
+    smaller = parse_note("v", "a.md", raw, chunk_max_chars=400)
+    with_overlap = parse_note("v", "a.md", raw, chunk_max_chars=400, chunk_overlap=80)
+    with_emb = parse_note(
+        "v", "a.md", raw, chunk_max_chars=1500, embedding_model="nomic-embed-text"
+    )
+    hashes = {
+        base.content_hash,
+        smaller.content_hash,
+        with_overlap.content_hash,
+        with_emb.content_hash,
+    }
+    assert len(hashes) == 4
+
+    # Bumping PARSER_VERSION or CHUNKER_VERSION invalidates content_hash even if chunks match
+    monkeypatch.setattr(parser_mod, "PARSER_VERSION", 2)
+    bumped_parser = parse_note("v", "a.md", raw, chunk_max_chars=1500)
+    assert bumped_parser.content_hash != base.content_hash
+
+    monkeypatch.setattr(parser_mod, "PARSER_VERSION", 1)
+    monkeypatch.setattr(parser_mod, "CHUNKER_VERSION", 2)
+    bumped_chunker = parse_note("v", "a.md", raw, chunk_max_chars=1500)
+    assert bumped_chunker.content_hash != base.content_hash
+
+
+def test_content_hash_detects_chunker_output_change_without_version_bump(monkeypatch):
+    # Even if CHUNKER_VERSION is not bumped, a change in produced chunks changes content_hash
+    def custom_chunker(body: str, max_chars: int = 1500, overlap: int = 0) -> list[Chunk]:
+        return [Chunk(position=0, heading="Custom", level=1, text=body.strip())]
+
+    monkeypatch.setitem(CHUNKERS, "heading", custom_chunker)
+    modified = parse_note("v", "a.md", "# Real Heading\n\nbody")
+    monkeypatch.undo()
+    original = parse_note("v", "a.md", "# Real Heading\n\nbody")
+    assert modified.content_hash != original.content_hash
+
+
+def test_chunk_overlap_and_registry_validation():
+    para1 = "alpha " * 60
+    para2 = "beta " * 60
+    chunks_no_overlap = chunk_markdown(f"# H\n{para1}\n\n{para2}", max_chars=450, overlap=0)
+    chunks_overlap = chunk_markdown(f"# H\n{para1}\n\n{para2}", max_chars=450, overlap=60)
+    assert len(chunks_overlap) >= 2
+    assert "alpha" in chunks_overlap[1].text and "alpha" not in chunks_no_overlap[1].text
+
+    with pytest.raises(ValueError, match="unknown chunker"):
+        get_chunker("nope")
+    with pytest.raises(ValueError, match="unknown parser"):
+        get_parser("nope")

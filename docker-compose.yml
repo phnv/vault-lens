@@ -74,6 +74,11 @@ services:
       ES_URL: http://elasticsearch:9200
       CONFIG_PATH: /app/config/vaultlens.yaml
       DATA_DIR: /data
+      PARSER: ${PARSER:-}
+      CHUNKER: ${CHUNKER:-}
+      CHUNK_MAX_CHARS: ${CHUNK_MAX_CHARS:-}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
       LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
       LLM_DEFAULT_PROVIDER: ${LLM_DEFAULT_PROVIDER:-${LLM_PROVIDER:-ollama}}
       LLM_TIMEOUT: ${LLM_TIMEOUT:-180}

@@ -1,6 +1,6 @@
 """Headless entrypoint. Lets humans and coding agents verify the core without the UI.
 
-  vaultlens status | sync [--vault SLUG] | reindex | search QUERY | ask QUESTION | eval
+  vaultlens status | sync [--vault SLUG] [--force] | reindex | search QUERY | ask QUESTION | eval
 """
 from __future__ import annotations
 
@@ -23,6 +23,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("status")
     s = sub.add_parser("sync")
     s.add_argument("--vault")
+    s.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-index all notes even when content hashes match",
+    )
     sub.add_parser("reindex")
     q = sub.add_parser("search")
     q.add_argument("query")
@@ -43,20 +48,47 @@ def main(argv: list[str] | None = None) -> int:
     backend = _backend(settings)
 
     if args.cmd == "status":
+        from .search.mapping import MAPPING_VERSION
+        from .vault.parser import CHUNKER_VERSION, PARSER_VERSION
+
         ok, state = backend.health()
-        print(json.dumps({"elasticsearch": {"ok": ok, "state": state}, **(backend.stats() if ok else {})}, indent=2))
+        compat_ok, compat_msg = (
+            backend.check_index_compatibility(settings.embedding_model)
+            if ok
+            else (False, "unreachable")
+        )
+        payload = {
+            "elasticsearch": {"ok": ok, "state": state},
+            "pipeline": {
+                "parser": settings.parser,
+                "parser_version": PARSER_VERSION,
+                "chunker": settings.chunker,
+                "chunker_version": CHUNKER_VERSION,
+                "chunk_max_chars": settings.chunk_max_chars,
+                "chunk_overlap": settings.chunk_overlap,
+                "embedding_model": settings.embedding_model,
+                "mapping_version": MAPPING_VERSION,
+            },
+            "index_compatible": {"ok": compat_ok, "message": compat_msg},
+            **(backend.stats() if ok else {}),
+        }
+        print(json.dumps(payload, indent=2))
         return 0 if ok else 1
 
     if args.cmd in ("sync", "reindex"):
-        from .indexing.service import IndexService
+        from .indexing.service import IndexCompatibilityError, IndexService
         from .store import JsonStore
 
         svc = IndexService(backend, settings, JsonStore(settings.data_dir))
-        if args.cmd == "reindex":
-            reports = svc.full_reindex()
-        else:
-            slugs = [args.vault] if args.vault else [v.slug for v in settings.vaults]
-            reports = [svc.sync(slug) for slug in slugs]
+        try:
+            if args.cmd == "reindex":
+                reports = svc.full_reindex()
+            else:
+                slugs = [args.vault] if args.vault else [v.slug for v in settings.vaults]
+                reports = [svc.sync(slug, force=args.force) for slug in slugs]
+        except IndexCompatibilityError as exc:
+            print(f"Index compatibility error: {exc}", file=sys.stderr)
+            return 2
         print(json.dumps([r.to_dict() for r in reports], indent=2))
         return 0
 
@@ -69,7 +101,9 @@ def main(argv: list[str] | None = None) -> int:
         for item in args.filter:
             field, _, value = item.partition("=")
             filters.setdefault(field, []).append(value)
-        spec = SearchSpec(query=args.query, vaults=args.vault, filters=filters, size=args.size, facets=False)
+        spec = SearchSpec(
+            query=args.query, vaults=args.vault, filters=filters, size=args.size, facets=False
+        )
         if args.show_query:
             print(compiled_query(spec))
         resp = parse_response(backend.search(spec))

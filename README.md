@@ -48,6 +48,9 @@ Ask mode (optional):
 | `VAULT_PATH` | `/mnt/c/Users/Home/Documents/notes` | Host path to Markdown notes, mounted read-only (`:ro`) |
 | `AIRFLOW_UID` | `1000` | Host WSL User ID to avoid Airflow volume permission issues |
 | `ES_VERSION`, `ES_HEAP` | `8.17.0`, `512m` | Elasticsearch Docker tag and JVM heap cap |
+| `PARSER`, `CHUNKER` | `default`, `heading` | Active parser (`PARSERS`) and chunker (`CHUNKERS`) strategy names |
+| `CHUNK_MAX_CHARS`, `CHUNK_OVERLAP` | `1500`, `0` | Max chunk length and overlap characters (set in `config/vaultlens.yaml` or `.env`) |
+| `EMBEDDING_MODEL` | `off` | Embedding model identifier (`off` in v1; guarded via index `_meta` and `content_hash`) |
 | `LLM_PROVIDER` | `ollama` | Active provider (`off`, `ollama`, `gemini`, or `groq`) |
 | `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | Endpoint to host Windows Ollama instance |
 | `OLLAMA_MODEL` | `qwen2.5:1.5b-instruct` | Compact LLM model suited for WSL memory limits |
@@ -85,9 +88,9 @@ More vaults: add a read-only mount in `docker-compose.yml`, then an entry in `co
 Run via `docker compose exec app vaultlens <cmd>`:
 
 ```bash
-docker compose exec app vaultlens status                  # Check cluster & alias status
-docker compose exec app vaultlens sync                    # Incremental scan & indexing
-docker compose exec app vaultlens reindex                 # Zero-downtime reindex
+docker compose exec app vaultlens status                  # Check cluster, pipeline & alias status
+docker compose exec app vaultlens sync                    # Incremental scan & indexing (--force to re-index all)
+docker compose exec app vaultlens reindex                 # Zero-downtime reindex (builds notes_vN+1, swaps alias)
 docker compose exec app vaultlens search "my search"      # Keyword search with facets & scores
 docker compose exec app vaultlens ask "What is X?"        # Grounded Q&A with citations
 docker compose exec app vaultlens eval                    # Run ranking evaluations (nDCG@10)
