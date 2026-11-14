@@ -23,6 +23,13 @@ x-airflow-common: &airflow-common
     DATA_DIR: '/data'
     NOTES_PATH: '/opt/airflow/notes'
     ES_URL: 'http://elasticsearch:9200'
+    EMBED_PROVIDER: ${EMBED_PROVIDER:-}
+    EMBED_DIMS: ${EMBED_DIMS:-}
+    EMBED_MAX_TOKENS: ${EMBED_MAX_TOKENS:-}
+    EMBED_BATCH: ${EMBED_BATCH:-}
+    HF_TOKEN: ${HF_TOKEN:-}
+    OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    OLLAMA_URL: ${OLLAMA_URL:-${OLLAMA_BASE_URL:-http://host.docker.internal:11434}}
     POSTGRES_HOST: 'postgres'
     POSTGRES_PORT: '5432'
     POSTGRES_DB: 'airflow'
@@ -83,6 +90,7 @@ services:
       EMBED_DIMS: ${EMBED_DIMS:-}
       EMBED_MAX_TOKENS: ${EMBED_MAX_TOKENS:-}
       EMBED_BATCH: ${EMBED_BATCH:-}
+      HF_TOKEN: ${HF_TOKEN:-}
       RERANK_ENABLED: ${RERANK_ENABLED:-}
       RERANK_MODEL: ${RERANK_MODEL:-}
       RERANK_MODE: ${RERANK_MODE:-}

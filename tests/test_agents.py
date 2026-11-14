@@ -181,6 +181,16 @@ def test_evaluate_tier_status_reasons():
     )
     assert ok_h4
 
+    ok_hf, reason_hf = evaluate_tier_status(
+        get_tier("hybrid"),
+        llm_provider="off",
+        config_embedding_model="BAAI/bge-m3",
+        live_embedding_model="BAAI/bge-m3",
+        embed_provider="hf_inference",
+        hf_token_configured=False,
+    )
+    assert not ok_hf and "HF_TOKEN" in reason_hf
+
     ok_ai, reason_ai = evaluate_tier_status(
         get_tier("ai_search"),
         llm_provider="ollama",

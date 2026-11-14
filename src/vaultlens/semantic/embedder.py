@@ -1,13 +1,12 @@
-"""Embedders (ADR-0009 section 5). Models load lazily on first use, never at import time."""
+"""LangChain-backed embedders (ADR-0009 section 5). Models load lazily on first use."""
 
 from __future__ import annotations
 
-import json
 import math
-import urllib.request
-from collections.abc import Sequence
+import warnings
+from collections.abc import Callable, Sequence
 from functools import lru_cache
-from typing import Protocol
+from typing import Any, Protocol
 
 from ..config import EmbedConfig, Settings
 from ..models import Note
@@ -44,61 +43,110 @@ def needs_query_prompt(model: str) -> bool:
     return "qwen3-embedding" in model.lower()
 
 
-class SentenceTransformersEmbedder:
-    def __init__(self, cfg: EmbedConfig, model_factory=None) -> None:
+QWEN3_QUERY_PREFIX = (
+    "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
+)
+
+
+class LangChainEmbedder:
+    """Lazy-loading adapter around any `langchain_core.embeddings.Embeddings` implementation."""
+
+    def __init__(
+        self,
+        cfg: EmbedConfig,
+        factory: Callable[[], Any],
+        *,
+        batch_documents: bool = False,
+        query_prefix: str = "",
+    ) -> None:
         self.cfg = cfg
-        self._factory = model_factory
-        self._model = None
+        self._factory = factory
+        self._embeddings: Any = None
+        self._batch_documents = batch_documents
+        self._query_prefix = query_prefix
 
-    def _load(self):
-        if self._model is None:
-            if self._factory is not None:
-                self._model = self._factory(self.cfg.model)
-            else:
-                from sentence_transformers import SentenceTransformer
-
-                self._model = SentenceTransformer(self.cfg.model)
-            self._model.max_seq_length = self.cfg.max_tokens
-        return self._model
+    def _load(self) -> Any:
+        if self._embeddings is None:
+            self._embeddings = self._factory()
+        return self._embeddings
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
             return []
-        out = self._load().encode(list(texts), batch_size=self.cfg.batch, normalize_embeddings=True)
-        return [[float(x) for x in v] for v in out]
-
-    def embed_query(self, text: str) -> list[float]:
-        kwargs = {"prompt_name": "query"} if needs_query_prompt(self.cfg.model) else {}
-        out = self._load().encode([text], normalize_embeddings=True, **kwargs)
-        return [float(x) for x in out[0]]
-
-
-class OllamaEmbedder:
-    def __init__(self, cfg: EmbedConfig, base_url: str, timeout_s: float = 120.0) -> None:
-        self.cfg, self.base_url, self.timeout_s = cfg, base_url.rstrip("/"), timeout_s
-
-    def _embed(self, texts: list[str]) -> list[list[float]]:
-        req = urllib.request.Request(
-            f"{self.base_url}/api/embed",
-            data=json.dumps({"model": self.cfg.model, "input": texts}).encode(),
-            headers={"Content-Type": "application/json"},
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:  # noqa: S310
-                data = json.loads(resp.read())
-        except Exception as exc:
-            raise EmbeddingError(f"Ollama embedding failed ({type(exc).__name__})") from exc
-        return [l2_normalize(v) for v in data["embeddings"]]
-
-    def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
-        out: list[list[float]] = []
         items = list(texts)
-        for i in range(0, len(items), self.cfg.batch):
-            out += self._embed(items[i : i + self.cfg.batch])
-        return out
+        try:
+            emb = self._load()
+            if self._batch_documents:
+                raw: list[list[float]] = []
+                for i in range(0, len(items), self.cfg.batch):
+                    raw += emb.embed_documents(items[i : i + self.cfg.batch])
+            else:
+                raw = emb.embed_documents(items)
+        except EmbeddingError:
+            raise
+        except Exception as exc:
+            raise EmbeddingError(
+                f"{self.cfg.provider} embedding failed ({type(exc).__name__})"
+            ) from exc
+        return [l2_normalize(v) for v in raw]
 
     def embed_query(self, text: str) -> list[float]:
-        return self._embed([text])[0]
+        q = f"{self._query_prefix}{text}" if self._query_prefix else text
+        try:
+            vec = self._load().embed_query(q)
+        except EmbeddingError:
+            raise
+        except Exception as exc:
+            raise EmbeddingError(
+                f"{self.cfg.provider} embedding failed ({type(exc).__name__})"
+            ) from exc
+        return l2_normalize(vec)
+
+
+def _build_huggingface_local(cfg: EmbedConfig) -> Any:
+    from langchain_huggingface import HuggingFaceEmbeddings
+
+    query_kw: dict[str, Any] = {"normalize_embeddings": True}
+    if needs_query_prompt(cfg.model):
+        query_kw["prompt_name"] = "query"
+    emb = HuggingFaceEmbeddings(
+        model_name=cfg.model,
+        encode_kwargs={"batch_size": cfg.batch, "normalize_embeddings": True},
+        query_encode_kwargs=query_kw,
+    )
+    emb._client.max_seq_length = cfg.max_tokens
+    return emb
+
+
+def _build_fastembed(cfg: EmbedConfig) -> Any:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
+
+    return FastEmbedEmbeddings(
+        model_name=cfg.model,
+        max_length=cfg.max_tokens,
+        batch_size=cfg.batch,
+    )
+
+
+def _build_hf_endpoint(cfg: EmbedConfig) -> Any:
+    if not cfg.hf_token.strip():
+        raise EmbeddingError("HF_TOKEN is required when EMBED_PROVIDER=hf_inference")
+    from langchain_huggingface import HuggingFaceEndpointEmbeddings
+
+    return HuggingFaceEndpointEmbeddings(
+        model=cfg.model,
+        provider="hf-inference",
+        task="feature-extraction",
+        huggingfacehub_api_token=cfg.hf_token,
+    )
+
+
+def _build_ollama(cfg: EmbedConfig, ollama_url: str) -> Any:
+    from langchain_ollama import OllamaEmbeddings
+
+    return OllamaEmbeddings(model=cfg.model, base_url=ollama_url.rstrip("/"))
 
 
 def validate_dims(cfg: EmbedConfig) -> None:
@@ -110,11 +158,30 @@ def validate_dims(cfg: EmbedConfig) -> None:
 @lru_cache(maxsize=4)
 def _cached(cfg: EmbedConfig, ollama_url: str) -> Embedder:
     validate_dims(cfg)
+    q_prefix = QWEN3_QUERY_PREFIX if needs_query_prompt(cfg.model) else ""
     if cfg.provider == "ollama":
-        return OllamaEmbedder(cfg, ollama_url)
-    return SentenceTransformersEmbedder(cfg)
+        return LangChainEmbedder(
+            cfg,
+            lambda: _build_ollama(cfg, ollama_url),
+            batch_documents=True,
+            query_prefix=q_prefix,
+        )
+    if cfg.provider == "hf_inference":
+        return LangChainEmbedder(
+            cfg,
+            lambda: _build_hf_endpoint(cfg),
+            batch_documents=True,
+            query_prefix=q_prefix,
+        )
+    if cfg.provider == "fastembed":
+        return LangChainEmbedder(
+            cfg,
+            lambda: _build_fastembed(cfg),
+            query_prefix=q_prefix,
+        )
+    return LangChainEmbedder(cfg, lambda: _build_huggingface_local(cfg))
 
 
 def get_embedder(settings: Settings) -> Embedder:
-    """Cached singleton per config; the model itself loads on first encode."""
+    """Cached singleton per config; the underlying LangChain Embeddings loads on first call."""
     return _cached(settings.embed, settings.llm.ollama_url)

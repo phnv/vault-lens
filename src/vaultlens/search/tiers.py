@@ -41,6 +41,8 @@ def evaluate_tier_status(
     live_embedding_model: str = "off",
     total_chunks: int | None = None,
     embedded_chunks: int | None = None,
+    embed_provider: str = "sentence_transformers",
+    hf_token_configured: bool = True,
 ) -> tuple[bool, str]:
     """Pure availability check for `tier` (ADR-0009 section 6.7 / R2)."""
     if tier.needs_embeddings:
@@ -49,6 +51,11 @@ def evaluate_tier_status(
                 False,
                 "Embeddings are disabled (index.embedding_model: off in config/vaultlens.yaml). "
                 "Enable embeddings and run Reindex.",
+            )
+        if embed_provider == "hf_inference" and not hf_token_configured:
+            return (
+                False,
+                "EMBED_PROVIDER is 'hf_inference' but HF_TOKEN is not set in .env.",
             )
         if live_embedding_model == "off":
             return (

@@ -9,10 +9,15 @@ from vaultlens.indexing.service import IndexCompatibilityError, IndexService
 from vaultlens.models import Chunk, Note
 from vaultlens.search.mapping import MAPPING_VERSION, load_mapping, mapping_embedding_dims
 from vaultlens.semantic.embedder import (
+    QWEN3_QUERY_PREFIX,
     EmbeddingError,
-    OllamaEmbedder,
-    SentenceTransformersEmbedder,
+    LangChainEmbedder,
+    _build_fastembed,
+    _build_hf_endpoint,
+    _build_huggingface_local,
+    _build_ollama,
     chunk_embedding_text,
+    get_embedder,
     l2_normalize,
     needs_query_prompt,
     validate_dims,
@@ -96,49 +101,148 @@ def test_l2_normalize():
     assert l2_normalize([0.0, 0.0]) == [0.0, 0.0]
 
 
-class _FakeST:
-    def __init__(self, name):
-        self.name, self.kwargs = name, []
-        self.max_seq_length = None
+class _FakeLCEmbeddings:
+    def __init__(self, fail: bool = False) -> None:
+        self.doc_calls: list[list[str]] = []
+        self.query_calls: list[str] = []
+        self.fail = fail
 
-    def encode(self, texts, **kwargs):
-        self.kwargs.append(kwargs)
-        return [[0.0] * 3 for _ in texts]
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        if self.fail:
+            raise RuntimeError("boom secret_token_123")
+        self.doc_calls.append(list(texts))
+        return [[3.0, 4.0] for _ in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        if self.fail:
+            raise RuntimeError("boom secret_token_123")
+        self.query_calls.append(text)
+        return [3.0, 4.0]
 
 
-def test_sentence_transformers_query_prompt_only_for_qwen():
-    bge = SentenceTransformersEmbedder(EmbedConfig(), model_factory=_FakeST)
-    bge.embed_query("q")
-    assert "prompt_name" not in bge._model.kwargs[-1]
-    assert bge._model.max_seq_length == 512
+def test_langchain_embedder_lazy_load_batching_and_normalization():
+    loads = 0
 
-    qwen = SentenceTransformersEmbedder(
-        EmbedConfig(model="Qwen/Qwen3-Embedding-0.6B"), model_factory=_FakeST
+    def _factory():
+        nonlocal loads
+        loads += 1
+        return _FakeLCEmbeddings()
+
+    cfg = EmbedConfig(provider="fastembed", batch=2)
+    emb = LangChainEmbedder(cfg, _factory)
+    assert loads == 0
+    assert emb.embed_documents([]) == []  # empty input never loads the model
+    assert loads == 0
+
+    vecs = emb.embed_documents(["a", "b", "c"])
+    assert loads == 1
+    assert len(vecs) == 3 and vecs[0] == pytest.approx([0.6, 0.8])
+    assert emb.embed_query("q") == pytest.approx([0.6, 0.8])
+    assert loads == 1
+
+
+def test_langchain_embedder_batches_documents_and_applies_query_prefix():
+    fake = _FakeLCEmbeddings()
+    cfg = EmbedConfig(provider="hf_inference", model="Qwen/Qwen3-Embedding-0.6B", batch=2)
+    emb = LangChainEmbedder(
+        cfg,
+        lambda: fake,
+        batch_documents=True,
+        query_prefix=QWEN3_QUERY_PREFIX,
     )
-    qwen.embed_query("q")
-    assert qwen._model.kwargs[-1]["prompt_name"] == "query"
-    qwen.embed_documents(["d"])
-    assert "prompt_name" not in qwen._model.kwargs[-1]
+    vecs = emb.embed_documents(["d1", "d2", "d3"])
+    assert len(vecs) == 3
+    assert fake.doc_calls == [["d1", "d2"], ["d3"]]
+
+    emb.embed_query("search term")
+    assert fake.query_calls == [f"{QWEN3_QUERY_PREFIX}search term"]
     assert needs_query_prompt("qwen3-embedding:0.6b") and not needs_query_prompt("bge-m3")
 
 
-def test_sentence_transformers_model_loads_lazily():
-    loads = []
-    emb = SentenceTransformersEmbedder(
-        EmbedConfig(), model_factory=lambda n: loads.append(n) or _FakeST(n)
-    )
-    assert loads == []
-    emb.embed_documents([])  # empty input never loads the model
-    assert loads == []
-    emb.embed_query("q")
-    emb.embed_query("q")
-    assert loads == ["BAAI/bge-m3"]
-
-
-def test_ollama_embedder_failure_is_user_safe():
-    emb = OllamaEmbedder(EmbedConfig(provider="ollama"), "http://127.0.0.1:9", timeout_s=1)
-    with pytest.raises(EmbeddingError, match="Ollama embedding failed"):
+def test_langchain_embedder_failure_is_user_safe():
+    cfg = EmbedConfig(provider="ollama")
+    emb = LangChainEmbedder(cfg, lambda: _FakeLCEmbeddings(fail=True))
+    with pytest.raises(EmbeddingError) as exc_info:
         emb.embed_query("secret note text")
+    msg = str(exc_info.value)
+    assert "ollama embedding failed" in msg
+    assert "secret_token_123" not in msg and "secret note text" not in msg
+
+
+def test_langchain_builders_wire_off_the_shelf_classes(monkeypatch):
+    import langchain_community.embeddings.fastembed as fe_mod
+    import langchain_huggingface as lchf_mod
+    import langchain_ollama as lcol_mod
+
+    fe_captured = {}
+
+    class _StubFastEmbedEmbeddings:
+        def __init__(self, **kw):
+            fe_captured.update(kw)
+
+    monkeypatch.setattr(fe_mod, "FastEmbedEmbeddings", _StubFastEmbedEmbeddings)
+    _build_fastembed(
+        EmbedConfig(provider="fastembed", model="BAAI/bge-m3", max_tokens=512, batch=8)
+    )
+    assert fe_captured == {"model_name": "BAAI/bge-m3", "max_length": 512, "batch_size": 8}
+
+    # Missing HF_TOKEN raises EmbeddingError before constructing HuggingFaceEndpointEmbeddings
+    with pytest.raises(EmbeddingError, match="HF_TOKEN is required"):
+        _build_hf_endpoint(EmbedConfig(provider="hf_inference", hf_token=""))
+
+    hf_ep_captured = {}
+
+    class _StubHFEndpointEmbeddings:
+        def __init__(self, **kw):
+            hf_ep_captured.update(kw)
+
+    monkeypatch.setattr(lchf_mod, "HuggingFaceEndpointEmbeddings", _StubHFEndpointEmbeddings)
+    _build_hf_endpoint(
+        EmbedConfig(provider="hf_inference", model="BAAI/bge-m3", hf_token="hf_tok_123")
+    )
+    assert hf_ep_captured == {
+        "model": "BAAI/bge-m3",
+        "provider": "hf-inference",
+        "task": "feature-extraction",
+        "huggingfacehub_api_token": "hf_tok_123",
+    }
+
+    hf_local_captured = {}
+
+    class _StubHFEmbeddings:
+        def __init__(self, **kw):
+            hf_local_captured.update(kw)
+            self._client = type("_Client", (), {"max_seq_length": None})()
+
+    monkeypatch.setattr(lchf_mod, "HuggingFaceEmbeddings", _StubHFEmbeddings)
+    st_qwen = _build_huggingface_local(
+        EmbedConfig(
+            provider="sentence_transformers",
+            model="Qwen/Qwen3-Embedding-0.6B",
+            max_tokens=512,
+            batch=16,
+        )
+    )
+    assert hf_local_captured["model_name"] == "Qwen/Qwen3-Embedding-0.6B"
+    assert hf_local_captured["query_encode_kwargs"]["prompt_name"] == "query"
+    assert st_qwen._client.max_seq_length == 512
+
+    ol_captured = {}
+
+    class _StubOllamaEmbeddings:
+        def __init__(self, **kw):
+            ol_captured.update(kw)
+
+    monkeypatch.setattr(lcol_mod, "OllamaEmbeddings", _StubOllamaEmbeddings)
+    _build_ollama(EmbedConfig(provider="ollama", model="bge-m3"), "http://localhost:11434/")
+    assert ol_captured == {"model": "bge-m3", "base_url": "http://localhost:11434"}
+
+
+def test_get_embedder_dispatches_all_providers():
+    for prov in ("sentence_transformers", "fastembed", "hf_inference", "ollama"):
+        s = Settings(embed=EmbedConfig(provider=prov, hf_token="hf_tok"))
+        emb = get_embedder(s)
+        assert isinstance(emb, LangChainEmbedder) and emb.cfg.provider == prov
 
 
 # --- indexing -----------------------------------------------------------------------------

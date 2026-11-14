@@ -48,7 +48,7 @@ st.caption(
     f"Pipeline: parser=`{cfg.parser}` (v{PARSER_VERSION}) · "
     f"chunker=`{cfg.chunker}` (v{CHUNKER_VERSION}, "
     f"max={cfg.chunk_max_chars}, overlap={cfg.chunk_overlap}) · "
-    f"embedding=`{cfg.embedding_model}` · mapping=v{MAPPING_VERSION}"
+    f"embedding=`{cfg.embedding_model}` (`{cfg.embed.provider}`) · mapping=v{MAPPING_VERSION}"
 )
 
 st.subheader("Registered vaults")

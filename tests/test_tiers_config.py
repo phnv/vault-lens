@@ -35,6 +35,8 @@ def test_env_beats_yaml_beats_default(tmp_path):
 
 
 def test_invalid_values_rejected(tmp_path):
+    for prov in ("sentence_transformers", "fastembed", "hf_inference", "ollama"):
+        assert load_settings(_env(tmp_path, EMBED_PROVIDER=prov)).embed.provider == prov
     with pytest.raises(ValueError):
         load_settings(_env(tmp_path, RERANK_MODE="bogus"))
     with pytest.raises(ValueError):

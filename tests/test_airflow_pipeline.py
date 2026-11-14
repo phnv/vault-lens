@@ -249,6 +249,48 @@ class TestAirflowPipeline(unittest.TestCase):
             with self.assertRaises(EmbeddingError):
                 reindex_vault_notes()
 
+        # hf_inference does not require sentence_transformers in Airflow, only HF_TOKEN
+        from vaultlens.config import EmbedConfig
+
+        hf_settings = Settings(
+            es_url="http://mock-es:9200",
+            es_alias="notes",
+            data_dir="/tmp/test_data",
+            vaults=(dummy_vault,),
+            embedding_model="BAAI/bge-m3",
+            embed=EmbedConfig(provider="hf_inference", hf_token="hf_tok"),
+        )
+        with (
+            patch("vaultlens_pipeline.sync.load_settings", return_value=hf_settings),
+            patch("vaultlens_pipeline.sync.SearchBackend"),
+            patch("vaultlens_pipeline.sync.JsonStore"),
+            patch("vaultlens_pipeline.sync.importlib.util.find_spec", return_value=None),
+            patch("vaultlens_pipeline.sync.get_embedder", return_value=sentinel_embedder),
+            patch("vaultlens_pipeline.sync.IndexService", return_value=mock_svc) as svc_cls,
+            patch(
+                "vaultlens_pipeline.sync.sync_note_catalog",
+                return_value={"upserted": 1, "deleted": 0},
+            ),
+        ):
+            sync_vault_notes("test-vault")
+            self.assertIs(svc_cls.call_args.kwargs["embedder"], sentinel_embedder)
+
+        hf_missing_token = Settings(
+            es_url="http://mock-es:9200",
+            es_alias="notes",
+            data_dir="/tmp/test_data",
+            vaults=(dummy_vault,),
+            embedding_model="BAAI/bge-m3",
+            embed=EmbedConfig(provider="hf_inference", hf_token=""),
+        )
+        with (
+            patch("vaultlens_pipeline.sync.load_settings", return_value=hf_missing_token),
+            patch("vaultlens_pipeline.sync.SearchBackend"),
+            patch("vaultlens_pipeline.sync.JsonStore"),
+        ):
+            with self.assertRaises(EmbeddingError):
+                sync_vault_notes("test-vault")
+
 
 if __name__ == "__main__":
     unittest.main()

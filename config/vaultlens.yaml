@@ -18,6 +18,7 @@ index:
 
 # Semantic search and AI tiers (ADR-0009). Env vars (EMBED_*, RERANK_*, HYBRID_*, AGENT_*) override these;
 # embedding_model above is the single source of truth for the embedding model.
+# embed.provider options: sentence_transformers (default, local) | fastembed (local ONNX) | hf_inference (remote API, needs HF_TOKEN) | ollama
 semantic:
   embed: {provider: sentence_transformers, dims: 1024, max_tokens: 512, batch: 16}
   rerank: {enabled: true, model: cross-encoder/ms-marco-MiniLM-L-6-v2, mode: blend, pool: 20}

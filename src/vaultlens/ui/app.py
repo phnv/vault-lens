@@ -82,6 +82,8 @@ def sidebar() -> None:
         if prov in OFF_DEVICE:
             api_label = "Groq's API" if prov == "groq" else "Google's API"
             st.warning(f"Ask mode sends excerpts of matching notes to {api_label}.")
+        if cfg.embeddings_enabled and cfg.embed.provider == "hf_inference":
+            st.warning("Embeddings use Hugging Face's Inference API (off-device).")
         client, err = services.llm()
         if err:
             st.error(err)

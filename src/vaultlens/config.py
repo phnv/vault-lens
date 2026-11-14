@@ -33,13 +33,19 @@ class LLMConfig:
     timeout_s: float = 120.0
 
 
+EMBED_PROVIDERS = ("sentence_transformers", "fastembed", "hf_inference", "ollama")
+
+
 @dataclass(frozen=True)
 class EmbedConfig:
-    provider: str = "sentence_transformers"  # sentence_transformers | ollama
+    provider: str = (
+        "sentence_transformers"  # sentence_transformers | fastembed | hf_inference | ollama
+    )
     model: str = "BAAI/bge-m3"
     dims: int = 1024  # must equal the mapping dims
     max_tokens: int = 512
     batch: int = 16
+    hf_token: str = field(default="", repr=False)  # never log or display
 
 
 @dataclass(frozen=True)
@@ -131,6 +137,7 @@ def _semantic_configs(
         dims=int(pick("embed", "dims", "EMBED_DIMS", e.dims)),
         max_tokens=int(pick("embed", "max_tokens", "EMBED_MAX_TOKENS", e.max_tokens)),
         batch=int(pick("embed", "batch", "EMBED_BATCH", e.batch)),
+        hf_token=str(env.get("HF_TOKEN", "")),
     )
     rerank = RerankConfig(
         enabled=_bool(pick("rerank", "enabled", "RERANK_ENABLED", r.enabled)),
@@ -152,9 +159,9 @@ def _semantic_configs(
     )
     if rerank.mode not in ("blend", "replace"):
         raise ValueError(f"RERANK_MODE must be 'blend' or 'replace', got {rerank.mode!r}")
-    if embed.provider not in ("sentence_transformers", "ollama"):
+    if embed.provider not in EMBED_PROVIDERS:
         raise ValueError(
-            f"EMBED_PROVIDER must be sentence_transformers or ollama: {embed.provider!r}"
+            f"EMBED_PROVIDER must be one of {EMBED_PROVIDERS}: {embed.provider!r}"
         )
     return embed, rerank, hybrid, agent
 

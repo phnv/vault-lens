@@ -53,7 +53,8 @@ Ask mode (optional):
 | `PARSER`, `CHUNKER` | `default`, `heading` | Active parser (`PARSERS`) and chunker (`CHUNKERS`) strategy names |
 | `CHUNK_MAX_CHARS`, `CHUNK_OVERLAP` | `1500`, `0` | Max chunk length and overlap characters (set in `config/vaultlens.yaml` or `.env`) |
 | `EMBEDDING_MODEL` | `off` | `off` disables embeddings; `on` (or model name) enables `EMBED_MODEL` (`make reindex` required on change) |
-| `EMBED_PROVIDER`, `EMBED_MODEL`, `EMBED_DIMS`, `EMBED_MAX_TOKENS`, `EMBED_BATCH` | `sentence_transformers`, `BAAI/bge-m3`, `1024`, `512`, `16` | Bi-encoder embedding configuration (`BAAI/bge-m3` or `Qwen/Qwen3-Embedding-0.6B`) |
+| `EMBED_PROVIDER`, `EMBED_MODEL`, `EMBED_DIMS`, `EMBED_MAX_TOKENS`, `EMBED_BATCH` | `sentence_transformers`, `BAAI/bge-m3`, `1024`, `512`, `16` | Bi-encoder embedding configuration (`provider`: `sentence_transformers`, `fastembed`, `hf_inference`, or `ollama`; `model`: `BAAI/bge-m3` or `Qwen/Qwen3-Embedding-0.6B`) |
+| `HF_TOKEN` | empty | Hugging Face API token (`repr=False`), required when `EMBED_PROVIDER=hf_inference` (note chunks/queries leave the machine) |
 | `RERANK_ENABLED`, `RERANK_MODEL`, `RERANK_MODE`, `RERANK_POOL` | `true`, `cross-encoder/ms-marco-MiniLM-L-6-v2`, `blend`, `20` | Local CPU cross-encoder reranking (`blend` or `replace`) |
 | `HYBRID_CANDIDATES`, `RRF_K` | `30`, `60` | Per-leg candidate depth and Reciprocal Rank Fusion constant |
 | `AGENT_MAX_ITERATIONS`, `AGENT_MAX_LLM_CALLS`, `AGENT_TIMEOUT_S`, `AGENT_MIN_HITS` | `3`, `8`, `120`, `3` | Hard budgets and filter auto-relaxation floor for the Agentic tier |

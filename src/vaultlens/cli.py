@@ -74,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
                 "chunk_max_chars": settings.chunk_max_chars,
                 "chunk_overlap": settings.chunk_overlap,
                 "embedding_model": settings.embedding_model,
+                "embed_provider": settings.embed.provider,
                 "mapping_version": MAPPING_VERSION,
             },
             "index_compatible": {"ok": compat_ok, "message": compat_msg},

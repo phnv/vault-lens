@@ -19,11 +19,26 @@ logger = logging.getLogger(__name__)
 def _build_embedder(settings: Settings) -> Embedder | None:
     if not settings.embeddings_enabled:
         return None
-    if importlib.util.find_spec("sentence_transformers") is None:
+    provider = settings.embed.provider
+    if (
+        provider == "sentence_transformers"
+        and importlib.util.find_spec("sentence_transformers") is None
+    ):
         raise EmbeddingError(
             "Embeddings are enabled in config "
-            f"(embedding_model={settings.embedding_model!r}) "
+            f"(embedding_model={settings.embedding_model!r}, provider={provider!r}) "
             "but 'sentence_transformers' is not installed in this environment."
+        )
+    if provider == "fastembed" and importlib.util.find_spec("fastembed") is None:
+        raise EmbeddingError(
+            "Embeddings are enabled in config "
+            f"(embedding_model={settings.embedding_model!r}, provider={provider!r}) "
+            "but 'fastembed' is not installed in this environment."
+        )
+    if provider == "hf_inference" and not settings.embed.hf_token.strip():
+        raise EmbeddingError(
+            "Embeddings are enabled with provider='hf_inference' "
+            "but HF_TOKEN is not set."
         )
     embedder = get_embedder(settings)
     if embedder is None:

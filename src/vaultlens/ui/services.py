@@ -111,6 +111,8 @@ def tier_status(tier: Tier) -> tuple[bool, str]:
         live_embedding_model=live_emb,
         total_chunks=total_chunks,
         embedded_chunks=embedded_chunks,
+        embed_provider=s.embed.provider,
+        hf_token_configured=bool(s.embed.hf_token.strip()),
     )
 
 

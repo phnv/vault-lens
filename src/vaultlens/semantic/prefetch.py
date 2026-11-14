@@ -10,8 +10,13 @@ def main() -> None:
     if s.embed.provider == "sentence_transformers":
         from sentence_transformers import SentenceTransformer
 
-        print(f"fetching embedder {s.embed.model} ...")
+        print(f"fetching embedder {s.embed.model} (sentence_transformers) ...")
         SentenceTransformer(s.embed.model)
+    elif s.embed.provider == "fastembed":
+        from fastembed import TextEmbedding
+
+        print(f"fetching embedder {s.embed.model} (fastembed) ...")
+        TextEmbedding(model_name=s.embed.model)
     if s.rerank.enabled:
         from sentence_transformers import CrossEncoder
 

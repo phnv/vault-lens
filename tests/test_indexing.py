@@ -113,6 +113,7 @@ def test_settings_from_env_and_yaml(tmp_path=None):
                 "CHUNK_OVERLAP": "",  # empty env var falls back to YAML
                 "GEMINI_API_KEY": "SECRET-KEY-123",
                 "GROQ_API_KEY": "GROQ-SECRET-456",
+                "HF_TOKEN": "HF-SECRET-789",
                 "GROQ_MODEL": "qwen/qwen3.8-27b",
                 "LLM_DEFAULT_PROVIDER": "ollama",
             }
@@ -121,7 +122,12 @@ def test_settings_from_env_and_yaml(tmp_path=None):
     assert s.parser == "default" and s.chunker == "heading" and s.embedding_model == "off"
     assert s.es_url == "http://h:9200" and s.llm.default_provider == "ollama"
     assert s.llm.groq_model == "qwen/qwen3.8-27b"
-    assert "SECRET-KEY-123" not in repr(s) and "GROQ-SECRET-456" not in repr(s)
+    assert s.embed.hf_token == "HF-SECRET-789"
+    assert (
+        "SECRET-KEY-123" not in repr(s)
+        and "GROQ-SECRET-456" not in repr(s)
+        and "HF-SECRET-789" not in repr(s)
+    )
 
 
 def test_sync_reindexes_notes_on_chunker_or_parser_version_change_and_force(tmp_path, monkeypatch):
