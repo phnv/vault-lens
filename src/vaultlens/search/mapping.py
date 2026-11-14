@@ -1,4 +1,5 @@
 """Loads the versioned index definition shipped inside the package."""
+
 from __future__ import annotations
 
 import json
@@ -6,7 +7,7 @@ import re
 from importlib import resources
 from typing import Any
 
-MAPPING_VERSION = 1  # bump when adding search/mappings/notes_v<N>.json (a schema change)
+MAPPING_VERSION = 2  # bump when adding search/mappings/notes_v<N>.json (a schema change)
 
 
 def load_mapping(version: int = MAPPING_VERSION, embedding_model: str = "off") -> dict[str, Any]:
@@ -17,6 +18,12 @@ def load_mapping(version: int = MAPPING_VERSION, embedding_model: str = "off") -
     meta["embedding_model"] = embedding_model
     data.setdefault("mappings", {})["_meta"] = meta
     return data
+
+
+def mapping_embedding_dims(version: int = MAPPING_VERSION) -> int | None:
+    """dims of chunks.embedding in the shipped mapping, or None when it has no vector field."""
+    props = load_mapping(version)["mappings"]["properties"]["chunks"]["properties"]
+    return props.get("embedding", {}).get("dims")
 
 
 def index_name(alias: str, version: int) -> str:

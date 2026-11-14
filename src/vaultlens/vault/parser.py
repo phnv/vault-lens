@@ -1,11 +1,10 @@
 """Markdown note -> Note. Pure functions, stdlib + PyYAML only. Never touches the filesystem."""
+
 from __future__ import annotations
 
 import hashlib
 import json
 import re
-from collections.abc import Callable
-from dataclasses import asdict
 from collections.abc import Callable
 from dataclasses import asdict
 from datetime import UTC, date, datetime
@@ -40,8 +39,23 @@ _MDLINK = re.compile(r'(?<!!)\[[^\]\n]*\]\(([^)\s]+)(?:\s+"[^"\n]*")?\)')
 _INLINE_TAG = re.compile(r"(?<![\w/&#(])#([A-Za-z\u00C0-\u024F_][\w/\-\u00C0-\u024F]*)")
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}")
 _ATTACHMENT_EXT = {
-    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".pdf", ".mp3", ".mp4", ".webm", ".mov",
-    ".wav", ".zip", ".csv", ".xlsx", ".docx", ".pptx",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".svg",
+    ".webp",
+    ".pdf",
+    ".mp3",
+    ".mp4",
+    ".webm",
+    ".mov",
+    ".wav",
+    ".zip",
+    ".csv",
+    ".xlsx",
+    ".docx",
+    ".pptx",
 }
 
 

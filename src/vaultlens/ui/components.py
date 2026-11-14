@@ -1,4 +1,5 @@
 """Shared Streamlit widgets: custom-field (meta.*) and date filter widgets, Clear helpers."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -52,12 +53,14 @@ def meta_filters_from_state(prefix: str) -> dict[str, list[str]]:
 
 
 def meta_filter_editor(prefix: str, vault: str | None) -> None:
-    """Rows of (free-text key, value dropdown); AND across rows. Read via meta_filters_from_state."""
+    """Rows of (key, value dropdown); AND across rows. Read via meta_filters_from_state."""
     st.markdown("**Custom fields**")
     for i in ss.get(_rows_key(prefix), []):
         c1, c2 = st.columns([5, 1])
         key = c1.text_input(
-            "Key", key=f"{prefix}_mk_{i}", placeholder="key, e.g. course",
+            "Key",
+            key=f"{prefix}_mk_{i}",
+            placeholder="key, e.g. course",
             label_visibility="collapsed",
         )
         c2.button(
@@ -72,7 +75,10 @@ def meta_filter_editor(prefix: str, vault: str | None) -> None:
         selected = ss.get(f"{prefix}_mv_{i}", [])
         options = list(dict.fromkeys([*counts, *selected]))
         st.multiselect(
-            "Values", options, key=f"{prefix}_mv_{i}", label_visibility="collapsed",
+            "Values",
+            options,
+            key=f"{prefix}_mv_{i}",
+            label_visibility="collapsed",
             placeholder="values" if options else "no values for this key",
             format_func=lambda v, c=counts: f"{v} ({c[v]})" if v in c else v,
         )
@@ -93,10 +99,20 @@ def clear_meta(prefix: str) -> None:
 def date_filter_widgets(prefix: str) -> None:
     """One field dropdown (created/modified) plus a date-range picker."""
     st.markdown("**Date**")
-    st.selectbox("Date field", sorted(DATE_FIELDS), index=sorted(DATE_FIELDS).index("modified"),
-                 key=f"{prefix}_date_field", label_visibility="collapsed")
-    st.date_input("Date range", value=(), key=f"{prefix}_dates", format="YYYY-MM-DD",
-                  label_visibility="collapsed")
+    st.selectbox(
+        "Date field",
+        sorted(DATE_FIELDS),
+        index=sorted(DATE_FIELDS).index("modified"),
+        key=f"{prefix}_date_field",
+        label_visibility="collapsed",
+    )
+    st.date_input(
+        "Date range",
+        value=(),
+        key=f"{prefix}_dates",
+        format="YYYY-MM-DD",
+        label_visibility="collapsed",
+    )
 
 
 def date_range_from_state(prefix: str) -> dict[str, str] | None:

@@ -1,0 +1,216 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "analysis": {
+      "filter": {
+        "pt_stop": {
+          "type": "stop",
+          "stopwords": "_portuguese_"
+        },
+        "pt_stemmer": {
+          "type": "stemmer",
+          "language": "light_portuguese"
+        },
+        "en_stop": {
+          "type": "stop",
+          "stopwords": "_english_"
+        },
+        "en_stemmer": {
+          "type": "stemmer",
+          "language": "light_english"
+        },
+        "edge_2_15": {
+          "type": "edge_ngram",
+          "min_gram": 2,
+          "max_gram": 15
+        }
+      },
+      "tokenizer": {
+        "path_tree_tok": {
+          "type": "path_hierarchy",
+          "delimiter": "/"
+        }
+      },
+      "analyzer": {
+        "std_folded": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "asciifolding"
+          ]
+        },
+        "pt_folded": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "asciifolding",
+            "pt_stop",
+            "pt_stemmer"
+          ]
+        },
+        "en_folded": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "en_stop",
+            "en_stemmer",
+            "asciifolding"
+          ]
+        },
+        "edge_index": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "asciifolding",
+            "edge_2_15"
+          ]
+        },
+        "path_tree": {
+          "type": "custom",
+          "tokenizer": "path_tree_tok"
+        }
+      }
+    }
+  },
+  "mappings": {
+    "_meta": {
+      "mapping_version": 2,
+      "embedding_model": "off"
+    },
+    "_source": {
+      "excludes": [
+        "chunks.embedding"
+      ]
+    },
+    "dynamic": "strict",
+    "properties": {
+      "vault": {
+        "type": "keyword"
+      },
+      "path": {
+        "type": "keyword"
+      },
+      "note_id": {
+        "type": "keyword"
+      },
+      "title": {
+        "type": "text",
+        "analyzer": "std_folded",
+        "fields": {
+          "edge": {
+            "type": "text",
+            "analyzer": "edge_index",
+            "search_analyzer": "std_folded"
+          },
+          "raw": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "aliases": {
+        "type": "text",
+        "analyzer": "std_folded"
+      },
+      "body": {
+        "type": "text",
+        "analyzer": "std_folded",
+        "fields": {
+          "pt": {
+            "type": "text",
+            "analyzer": "pt_folded"
+          },
+          "en": {
+            "type": "text",
+            "analyzer": "en_folded"
+          }
+        }
+      },
+      "type": {
+        "type": "keyword"
+      },
+      "status": {
+        "type": "keyword"
+      },
+      "tags": {
+        "type": "keyword"
+      },
+      "created": {
+        "type": "date",
+        "format": "strict_date_optional_time||yyyy-MM-dd"
+      },
+      "modified": {
+        "type": "date",
+        "format": "strict_date_optional_time||yyyy-MM-dd"
+      },
+      "folder": {
+        "type": "keyword",
+        "fields": {
+          "tree": {
+            "type": "text",
+            "analyzer": "path_tree",
+            "fielddata": true
+          }
+        }
+      },
+      "links_out": {
+        "type": "keyword"
+      },
+      "urls": {
+        "type": "keyword"
+      },
+      "meta": {
+        "type": "flattened"
+      },
+      "content_hash": {
+        "type": "keyword"
+      },
+      "size_bytes": {
+        "type": "integer"
+      },
+      "indexed_at": {
+        "type": "date"
+      },
+      "chunks": {
+        "type": "nested",
+        "properties": {
+          "position": {
+            "type": "integer"
+          },
+          "level": {
+            "type": "short"
+          },
+          "heading": {
+            "type": "text",
+            "analyzer": "std_folded"
+          },
+          "text": {
+            "type": "text",
+            "analyzer": "std_folded",
+            "fields": {
+              "pt": {
+                "type": "text",
+                "analyzer": "pt_folded"
+              },
+              "en": {
+                "type": "text",
+                "analyzer": "en_folded"
+              }
+            }
+          },
+          "embedding": {
+            "type": "dense_vector",
+            "dims": 1024,
+            "index": true,
+            "similarity": "cosine"
+          }
+        }
+      }
+    }
+  }
+}

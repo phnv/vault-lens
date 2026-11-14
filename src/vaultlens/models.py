@@ -1,8 +1,9 @@
 """Plain dataclasses shared by every layer. Stdlib only (see docs/adr/0005)."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, fields
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 MatchMode = Literal["all", "any", "phrase"]
@@ -40,8 +41,17 @@ class Note:
     size_bytes: int = 0
     warnings: list[str] = field(default_factory=list)
 
-    def to_es_doc(self) -> dict[str, Any]:
-        """Document body matching search/mappings/notes_v1.json (dynamic: strict)."""
+    def to_es_doc(self, embeddings: list[list[float]] | None = None) -> dict[str, Any]:
+        """Document body matching search/mappings/notes_v2.json (dynamic: strict).
+
+        `embeddings`, when given, is aligned with `self.chunks`; None keeps the v1 shape.
+        """
+        chunk_docs = [asdict(c) for c in self.chunks]
+        if embeddings is not None:
+            if len(embeddings) != len(chunk_docs):
+                raise ValueError("embeddings must align with chunks")
+            for doc, vec in zip(chunk_docs, embeddings, strict=True):
+                doc["embedding"] = vec
         return {
             "vault": self.vault,
             "path": self.path,
@@ -60,8 +70,8 @@ class Note:
             "meta": self.meta,
             "content_hash": self.content_hash,
             "size_bytes": self.size_bytes,
-            "indexed_at": datetime.now(timezone.utc).isoformat(),
-            "chunks": [asdict(c) for c in self.chunks],
+            "indexed_at": datetime.now(UTC).isoformat(),
+            "chunks": chunk_docs,
         }
 
 
@@ -71,7 +81,7 @@ class SearchSpec:
 
     query: str = ""
     vaults: list[str] = field(default_factory=list)
-    match_mode: MatchMode = "all"
+    match_mode: MatchMode = "any"
     match_type: str = "best_fields"
     fields: dict[str, float] = field(
         default_factory=lambda: {"title": 3.0, "aliases": 2.0, "body.pt": 1.0, "body.en": 1.0}
@@ -138,3 +148,44 @@ class SearchResponse:
     hits: list[Hit]
     facets: dict[str, list[tuple[str, int]]] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class Passage:
+    """One retrieved chunk with the scores that ranked it (ADR-0009)."""
+
+    doc_id: str
+    path: str
+    title: str
+    heading: str
+    vault: str
+    position: int
+    text: str
+    rrf_score: float | None = None
+    rerank_score: float | None = None
+
+
+@dataclass
+class TraceEvent:
+    """One step of a hybrid/agent run. JSON-serialisable, never holds secrets."""
+
+    ts: str
+    step: str
+    kind: str  # llm | search | rerank | decision | warning
+    summary: str
+    ms: int | None = None
+    data: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class HybridResponse:
+    passages: list[Passage]
+    hits: list[Hit]
+    facets: dict[str, list[tuple[str, int]]] = field(default_factory=dict)
+    total: int = 0
+    took_ms: int = 0
+    legs: dict[str, int] = field(default_factory=dict)  # per-leg hit counts
+    warnings: list[str] = field(default_factory=list)

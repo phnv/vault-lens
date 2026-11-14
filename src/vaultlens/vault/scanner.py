@@ -1,4 +1,5 @@
 """Filesystem walk (read-only) and hash diff against what is indexed."""
+
 from __future__ import annotations
 
 import os
@@ -34,7 +35,8 @@ def scan_vault(vault: VaultConfig) -> Iterator[RawFile]:
         rel_dir = Path(dirpath).relative_to(root).as_posix()
         rel_dir = "" if rel_dir == "." else rel_dir
         dirnames[:] = sorted(
-            d for d in dirnames
+            d
+            for d in dirnames
             if not d.startswith(".") and (f"{rel_dir}/{d}" if rel_dir else d) not in ignored
         )
         for name in sorted(filenames):

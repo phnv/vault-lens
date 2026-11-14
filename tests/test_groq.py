@@ -79,10 +79,12 @@ def test_complete_happy_path_uses_langchain_chat_groq():
 
 
 def test_complete_falls_back_to_second_model_immediately_on_single_429():
-    factory = FakeChatFactory([
-        _make_429({"retry-after": "15", "x-ratelimit-remaining-requests": "900"}),
-        "Fallback answer [2]",
-    ])
+    factory = FakeChatFactory(
+        [
+            _make_429({"retry-after": "15", "x-ratelimit-remaining-requests": "900"}),
+            "Fallback answer [2]",
+        ]
+    )
     sleeps: list[float] = []
     client = GroqClient(
         "gsk_test", model=GROQ_MODELS[0], chat_factory=factory, sleep_fn=sleeps.append
@@ -96,11 +98,15 @@ def test_complete_falls_back_to_second_model_immediately_on_single_429():
 
 
 def test_complete_parses_headers_and_sleeps_only_when_both_models_return_429():
-    factory = FakeChatFactory([
-        _make_429({"retry-after": "12", "x-ratelimit-remaining-requests": "500"}),
-        _make_429({"x-ratelimit-reset-tokens": "7.66s", "x-ratelimit-remaining-requests": "800"}),
-        "Recovered after sleep [1]",
-    ])
+    factory = FakeChatFactory(
+        [
+            _make_429({"retry-after": "12", "x-ratelimit-remaining-requests": "500"}),
+            _make_429(
+                {"x-ratelimit-reset-tokens": "7.66s", "x-ratelimit-remaining-requests": "800"}
+            ),
+            "Recovered after sleep [1]",
+        ]
+    )
     sleeps: list[float] = []
     client = GroqClient(
         "gsk_test", model=GROQ_MODELS[0], chat_factory=factory, sleep_fn=sleeps.append
@@ -115,10 +121,12 @@ def test_complete_parses_headers_and_sleeps_only_when_both_models_return_429():
 
 def test_complete_fails_fast_without_sleep_when_both_models_hit_daily_rpd_limit():
     rpd_msg = "Rate limit reached on requests per day (RPD)"
-    factory = FakeChatFactory([
-        _make_429({"x-ratelimit-remaining-requests": "0"}, rpd_msg),
-        _make_429({"x-ratelimit-remaining-requests": "0"}, rpd_msg),
-    ])
+    factory = FakeChatFactory(
+        [
+            _make_429({"x-ratelimit-remaining-requests": "0"}, rpd_msg),
+            _make_429({"x-ratelimit-remaining-requests": "0"}, rpd_msg),
+        ]
+    )
     sleeps: list[float] = []
     client = GroqClient(
         "gsk_test", model=GROQ_MODELS[0], chat_factory=factory, sleep_fn=sleeps.append
@@ -130,11 +138,13 @@ def test_complete_fails_fast_without_sleep_when_both_models_hit_daily_rpd_limit(
 
 
 def test_stream_falls_back_and_sleeps_on_both_429():
-    factory = FakeChatFactory([
-        _make_429({"retry-after": "5"}),
-        _make_429({"retry-after": "3"}),
-        ["Hello ", "", "world"],
-    ])
+    factory = FakeChatFactory(
+        [
+            _make_429({"retry-after": "5"}),
+            _make_429({"retry-after": "3"}),
+            ["Hello ", "", "world"],
+        ]
+    )
     sleeps: list[float] = []
     client = GroqClient(
         "gsk_test", model=GROQ_MODELS[0], chat_factory=factory, sleep_fn=sleeps.append

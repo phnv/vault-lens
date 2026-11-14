@@ -18,9 +18,10 @@ vaultlens search "q"          # headless check of the real stack (needs `make up
 
 ## Architecture rules (do not break without an ADR in docs/adr/)
 
-1. **Dependency direction:** `ui/` -> `ask`, `indexing/`, `evaluate`, `search/` -> `models`, `config`. Never the reverse.
-2. **Third-party imports are confined:** `elasticsearch` only in `search/backend.py`; `langchain_*`, `ollama`, `google.genai`,
-   and `groq` only in `llm/`; `streamlit` only in `ui/`. Everything else is stdlib + PyYAML so it tests offline.
+1. **Dependency direction:** `ui/` -> `agents/`, `ask`, `indexing/`, `evaluate`, `search/`, `semantic/` -> `models`, `config`. Never the reverse.
+2. **Third-party imports are confined:** `elasticsearch` only in `search/backend.py`; `langchain_*`, `langgraph`, `ollama`,
+   `google.genai`, and `groq` only in `llm/` and `agents/`; `sentence_transformers` only in `semantic/`; `streamlit` only in
+   `ui/` (ADR-0009 rev. 2). Everything else is stdlib + PyYAML so it tests offline.
 3. **Pure core stays pure:** `vault/parser.py`, `search/query_builder.py`, `search/results.py`, `evaluate.py` (builders),
    `ask.py` (prompt building) do no I/O. Add logic there, with tests, not in UI files.
 4. **One SearchSpec:** every search control maps to a `SearchSpec` field; `build_search_body` is the only place that

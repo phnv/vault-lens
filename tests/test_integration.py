@@ -1,7 +1,8 @@
-"""Needs a live Elasticsearch (`make up`, or ES_URL). UNVERIFIED: written without a server available.
+"""Needs a live Elasticsearch (`make up`, or ES_URL).
 
 First job of ROADMAP M1 is to run these and fix whatever the real server disagrees with.
 """
+
 from pathlib import Path
 from uuid import uuid4
 
@@ -25,8 +26,12 @@ def stack(tmp_path_factory):
 
     alias = f"test_{uuid4().hex[:8]}"
     data = tmp_path_factory.mktemp("data")
-    settings = Settings(es_url=es_url(), es_alias=alias, data_dir=str(data),
-                        vaults=(VaultConfig(slug="fixture", path=str(FIX)),))
+    settings = Settings(
+        es_url=es_url(),
+        es_alias=alias,
+        data_dir=str(data),
+        vaults=(VaultConfig(slug="fixture", path=str(FIX)),),
+    )
     backend = SearchBackend(es_url(), alias)
     yield backend, IndexService(backend, settings, JsonStore(str(data)))
     index = backend.current_index()
@@ -41,7 +46,12 @@ def _search(backend, **kw):
 def test_first_sync_indexes_everything_then_is_idempotent(stack):
     backend, svc = stack
     first = svc.sync("fixture")
-    assert (first.scanned, first.new, first.changed, first.removed) == (3, 3, 0, 0) and not first.errors
+    assert (first.scanned, first.new, first.changed, first.removed) == (
+        3,
+        3,
+        0,
+        0,
+    ) and not first.errors
     second = svc.sync("fixture")
     assert (second.new, second.changed, second.removed, second.unchanged) == (0, 0, 0, 3)
     assert backend.stats()["docs"] == 3 and backend.stats()["chunks"] >= 3
@@ -72,4 +82,15 @@ def test_full_reindex_swaps_alias(stack):
     before = backend.current_index()
     svc.full_reindex()
     after = backend.current_index()
-    assert after != before and backend.stats()["docs"] == 3
+    st = backend.stats()
+    assert after != before and st["docs"] == 3 and st["embedded_chunks"] == 0
+
+
+def test_pt_folded_treats_accented_and_ascii_forms_identically(stack):
+    backend, _ = stack
+    for accented, ascii_form in (
+        ("opções", "opcoes"),
+        ("certificações", "certificacoes"),
+        ("limitações", "limitacoes"),
+    ):
+        assert backend.analyze("pt_folded", accented) == backend.analyze("pt_folded", ascii_form)

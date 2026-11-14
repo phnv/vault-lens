@@ -78,7 +78,21 @@ services:
       CHUNKER: ${CHUNKER:-}
       CHUNK_MAX_CHARS: ${CHUNK_MAX_CHARS:-}
       CHUNK_OVERLAP: ${CHUNK_OVERLAP:-}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      HF_HOME: /models
+      EMBED_PROVIDER: ${EMBED_PROVIDER:-}
+      EMBED_DIMS: ${EMBED_DIMS:-}
+      EMBED_MAX_TOKENS: ${EMBED_MAX_TOKENS:-}
+      EMBED_BATCH: ${EMBED_BATCH:-}
+      RERANK_ENABLED: ${RERANK_ENABLED:-}
+      RERANK_MODEL: ${RERANK_MODEL:-}
+      RERANK_MODE: ${RERANK_MODE:-}
+      RERANK_POOL: ${RERANK_POOL:-}
+      HYBRID_CANDIDATES: ${HYBRID_CANDIDATES:-}
+      RRF_K: ${RRF_K:-}
+      AGENT_MAX_ITERATIONS: ${AGENT_MAX_ITERATIONS:-}
+      AGENT_MAX_LLM_CALLS: ${AGENT_MAX_LLM_CALLS:-}
+      AGENT_TIMEOUT_S: ${AGENT_TIMEOUT_S:-}
+      AGENT_MIN_HITS: ${AGENT_MIN_HITS:-}
       LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
       LLM_DEFAULT_PROVIDER: ${LLM_DEFAULT_PROVIDER:-${LLM_PROVIDER:-ollama}}
       LLM_TIMEOUT: ${LLM_TIMEOUT:-180}
@@ -95,6 +109,7 @@ services:
     volumes:
       - ./config:/app/config:ro
       - appdata:/data
+      - hfcache:/models
       - ${VAULT_PATH:-${NOTES_SOURCE_DIR:-/mnt/c/Users/Home/Documents/notes}}:/vaults/personal:ro   # read-only
     extra_hosts:
       - "host.docker.internal:host-gateway"   # lets Ollama connect to Windows host
@@ -196,4 +211,5 @@ services:
 volumes:
   esdata:
   appdata:
+  hfcache:
   postgres-db-volume:

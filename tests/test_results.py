@@ -4,15 +4,39 @@ RAW = {
     "took": 12,
     "hits": {
         "total": {"value": 37, "relation": "eq"},
-        "hits": [{
-            "_id": "v:1", "_score": 2.5,
-            "_source": {"title": "T", "path": "a/b.md", "vault": "v", "tags": ["x"], "links_out": ["n"], "aliases": ["al"]},
-            "highlight": {"body.pt": ["combine a <mark>analyzer</mark> &amp; more"]},
-            "inner_hits": {"chunks": {"hits": {"hits": [{
-                "_source": {"chunks": {"heading": "Analyzer choice", "position": 2, "text": "body"}},
-                "highlight": {"chunks.text.pt": ["<mark>analyzer</mark>"]},
-            }]}}},
-        }],
+        "hits": [
+            {
+                "_id": "v:1",
+                "_score": 2.5,
+                "_source": {
+                    "title": "T",
+                    "path": "a/b.md",
+                    "vault": "v",
+                    "tags": ["x"],
+                    "links_out": ["n"],
+                    "aliases": ["al"],
+                },
+                "highlight": {"body.pt": ["combine a <mark>analyzer</mark> &amp; more"]},
+                "inner_hits": {
+                    "chunks": {
+                        "hits": {
+                            "hits": [
+                                {
+                                    "_source": {
+                                        "chunks": {
+                                            "heading": "Analyzer choice",
+                                            "position": 2,
+                                            "text": "body",
+                                        }
+                                    },
+                                    "highlight": {"chunks.text.pt": ["<mark>analyzer</mark>"]},
+                                }
+                            ]
+                        }
+                    }
+                },
+            }
+        ],
     },
     "aggregations": {"type": {"buckets": [{"key": "atomic", "doc_count": 24}]}},
 }

@@ -73,4 +73,3 @@ def test_gemini_requires_key_and_uses_shared_langchain_base():
     assert res.text == "Gemini answer [1]" and res.provider == "gemini"
     assert list(client.stream("sys", "user")) == ["Part 1 ", "Part 2"]
     assert client.health() == (True, "ready")
-

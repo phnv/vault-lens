@@ -49,13 +49,15 @@ def test_mapping_meta_and_compatibility():
 
     # Missing index or matching _meta is compatible
     assert check_meta_compatibility(None, None)[0] is True
-    meta_ok = {"mapping_version": 1, "embedding_model": "off"}
-    assert check_meta_compatibility("notes_v1", meta_ok)[0] is True
+    meta_ok = {"mapping_version": MAPPING_VERSION, "embedding_model": "off"}
+    assert check_meta_compatibility("notes_v2", meta_ok)[0] is True
 
     # Legacy index created before _meta defaults to version_of(index) and embedding_model="off"
-    assert resolve_index_meta("notes_v1", None) == meta_ok
+    assert resolve_index_meta("notes_v2", None) == meta_ok
     assert (
-        check_meta_compatibility("notes_v1", None, mapping_version=1, embedding_model="off")[0]
+        check_meta_compatibility(
+            "notes_v2", None, mapping_version=MAPPING_VERSION, embedding_model="off"
+        )[0]
         is True
     )
 
@@ -65,7 +67,11 @@ def test_mapping_meta_and_compatibility():
     )
     assert not ok_ver and "mapping_version" in msg_ver and "reindex" in msg_ver.lower()
 
-    ok_emb, msg_emb = check_meta_compatibility(
-        "notes_v1", None, embedding_model="nomic-embed-text"
-    )
+    ok_emb, msg_emb = check_meta_compatibility("notes_v1", None, embedding_model="nomic-embed-text")
     assert not ok_emb and "embedding_model" in msg_emb and "reindex" in msg_emb.lower()
+
+
+def test_pt_folded_applies_asciifolding_before_portuguese_filters():
+    filters = load_mapping()["settings"]["analysis"]["analyzer"]["pt_folded"]["filter"]
+    assert filters.index("asciifolding") < filters.index("pt_stop")
+    assert filters.index("asciifolding") < filters.index("pt_stemmer")

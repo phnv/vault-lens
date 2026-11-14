@@ -3,6 +3,7 @@
 Written against elasticsearch-py 8.x. UNVERIFIED against a live server: first integration task in
 docs/ROADMAP.md (M1).
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -50,6 +51,11 @@ class SearchBackend:
             raw_meta = None
         return resolve_index_meta(target, raw_meta)
 
+    def embedding_meta(self, index: str | None = None) -> dict[str, Any]:
+        """{'embedding_model': ...} of the live (or given) index; model 'off' means no vectors."""
+        meta = self.index_meta(index)
+        return {"embedding_model": meta.get("embedding_model", "off")}
+
     def check_index_compatibility(self, embedding_model: str = "off") -> tuple[bool, str]:
         current = self.current_index()
         if current is None:
@@ -61,23 +67,39 @@ class SearchBackend:
     def stats(self) -> dict[str, Any]:
         index = self.current_index()
         if index is None:
-            return {"index": None, "docs": 0, "chunks": 0, "size_bytes": 0, "meta": {}}
+            return {
+                "index": None,
+                "docs": 0,
+                "chunks": 0,
+                "embedded_chunks": 0,
+                "size_bytes": 0,
+                "meta": {},
+            }
         resp = self.es.search(
             index=self.alias,
             body={
                 "size": 0,
                 "aggs": {
-                    "chunks": {"nested": {"path": "chunks"}},
+                    "chunks": {
+                        "nested": {"path": "chunks"},
+                        "aggs": {
+                            "with_embedding": {
+                                "filter": {"exists": {"field": "chunks.embedding"}}
+                            }
+                        },
+                    },
                     "vaults": {"terms": {"field": "vault", "size": 50}},
                 },
             },
         )
         st = self.es.indices.stats(index=index, metric="store")
         buckets = resp["aggregations"]["vaults"]["buckets"]
+        chunks_agg = resp["aggregations"]["chunks"]
         return {
             "index": index,
             "docs": resp["hits"]["total"]["value"],
-            "chunks": resp["aggregations"]["chunks"]["doc_count"],
+            "chunks": chunks_agg["doc_count"],
+            "embedded_chunks": chunks_agg.get("with_embedding", {}).get("doc_count", 0),
             "per_vault": {b["key"]: b["doc_count"] for b in buckets},
             "size_bytes": st["_all"]["primaries"]["store"]["size_in_bytes"],
             "meta": self.index_meta(index),
@@ -108,6 +130,9 @@ class SearchBackend:
         self.es.indices.update_aliases(actions=actions)
         if old:
             self.es.indices.delete(index=old)
+
+    def delete_index(self, index: str) -> None:
+        self.es.indices.delete(index=index, ignore_unavailable=True)
 
     def refresh(self, index: str | None = None) -> None:
         self.es.indices.refresh(index=index or self.alias)

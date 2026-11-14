@@ -1,16 +1,49 @@
-from vaultlens.ask import NO_RESULTS, SYSTEM_PROMPT, AskService, ask_spec, build_context, build_user_prompt
+from vaultlens.ask import (
+    NO_RESULTS,
+    SYSTEM_PROMPT,
+    AskService,
+    ask_spec,
+    build_context,
+    build_user_prompt,
+    passages_for,
+)
 from vaultlens.llm.base import LLMResult
 from vaultlens.models import SearchSpec
 from vaultlens.search.query_builder import build_search_body
 
 RAW = {
     "took": 1,
-    "hits": {"total": {"value": 2}, "hits": [
-        {"_id": "v:1", "_source": {"title": "A", "path": "a.md", "vault": "v"},
-         "inner_hits": {"chunks": {"hits": {"hits": [{"_source": {"chunks": {"heading": "H", "position": 0, "text": "alpha text"}}}]}}}},
-        {"_id": "v:2", "_source": {"title": "B", "path": "b.md", "vault": "v"},
-         "highlight": {"body.pt": ["snippet <mark>beta</mark>"]}},
-    ]},
+    "hits": {
+        "total": {"value": 2},
+        "hits": [
+            {
+                "_id": "v:1",
+                "_source": {"title": "A", "path": "a.md", "vault": "v"},
+                "inner_hits": {
+                    "chunks": {
+                        "hits": {
+                            "hits": [
+                                {
+                                    "_source": {
+                                        "chunks": {
+                                            "heading": "H",
+                                            "position": 0,
+                                            "text": "alpha text",
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                },
+            },
+            {
+                "_id": "v:2",
+                "_source": {"title": "B", "path": "b.md", "vault": "v"},
+                "highlight": {"body.pt": ["snippet <mark>beta</mark>"]},
+            },
+        ],
+    },
 }
 
 
@@ -38,12 +71,35 @@ def test_ask_spec_is_keyword_retrieval_with_chunk_text():
     assert "chunks.text" in str(build_search_body(spec))
 
 
+def test_ask_spec_preserves_caller_match_mode_and_msm():
+    spec_all = ask_spec(
+        "exact terms",
+        SearchSpec(match_mode="all", minimum_should_match="75%"),
+    )
+    assert spec_all.match_mode == "all"
+    assert spec_all.minimum_should_match == "75%"
+    spec_phrase = ask_spec("exact phrase", SearchSpec(match_mode="phrase"))
+    assert spec_phrase.match_mode == "phrase"
+    assert spec_phrase.minimum_should_match == "40%"
+
+
 def test_context_numbers_sources_and_falls_back_to_snippet():
     from vaultlens.search.results import parse_response
 
     ctx, sources = build_context(parse_response(RAW).hits)
     assert [s.n for s in sources] == [1, 2]
     assert "[1] A (a.md) > H\nalpha text" in ctx and "snippet beta" in ctx and "<mark>" not in ctx
+
+
+def test_passages_for_falls_back_to_title_or_path():
+    from vaultlens.models import Hit
+
+    assert passages_for(Hit(doc_id="1", score=1.0, title="My Title", path="p.md", vault="v")) == [
+        ("", "My Title")
+    ]
+    assert passages_for(Hit(doc_id="2", score=1.0, title="", path="only_path.md", vault="v")) == [
+        ("", "only_path.md")
+    ]
 
 
 def test_answer_calls_llm_with_fenced_notes():

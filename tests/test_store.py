@@ -1,4 +1,5 @@
 """Saved-search helpers: matching the loaded saved spec and deleting entries."""
+
 from __future__ import annotations
 
 from vaultlens.store import JsonStore, matches_saved

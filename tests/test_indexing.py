@@ -6,7 +6,12 @@ import pytest
 import vaultlens.vault.parser as parser_mod
 from vaultlens.config import Settings, VaultConfig, load_settings
 from vaultlens.indexing.service import IndexCompatibilityError, IndexService, resolve_duplicate_ids
-from vaultlens.search.mapping import check_meta_compatibility, index_name, version_of
+from vaultlens.search.mapping import (
+    MAPPING_VERSION,
+    check_meta_compatibility,
+    index_name,
+    version_of,
+)
 from vaultlens.store import JsonStore
 from vaultlens.vault.parser import parse_note
 
@@ -36,7 +41,7 @@ class _FakeBackend:
         if self.active_index is None:
             self.active_index = index_name(self.alias, 1)
             self.meta_by_index[self.active_index] = {
-                "mapping_version": 1,
+                "mapping_version": MAPPING_VERSION,
                 "embedding_model": embedding_model,
             }
             self.docs_by_index.setdefault(self.active_index, {})
@@ -44,7 +49,10 @@ class _FakeBackend:
 
     def create_next_index(self, embedding_model: str = "off") -> str:
         nxt = index_name(self.alias, version_of(self.active_index) + 1 if self.active_index else 1)
-        self.meta_by_index[nxt] = {"mapping_version": 1, "embedding_model": embedding_model}
+        self.meta_by_index[nxt] = {
+            "mapping_version": MAPPING_VERSION,
+            "embedding_model": embedding_model,
+        }
         self.docs_by_index[nxt] = {}
         return nxt
 
@@ -52,6 +60,10 @@ class _FakeBackend:
         if old and old in self.docs_by_index and old != new:
             del self.docs_by_index[old]
         self.active_index = new
+
+    def delete_index(self, index: str) -> None:
+        self.docs_by_index.pop(index, None)
+        self.meta_by_index.pop(index, None)
 
     def refresh(self, index: str | None = None) -> None:
         pass
@@ -61,9 +73,7 @@ class _FakeBackend:
             return {}
         docs = self.docs_by_index.get(self.active_index, {})
         return {
-            doc_id: src["content_hash"]
-            for doc_id, src in docs.items()
-            if src.get("vault") == vault
+            doc_id: src["content_hash"] for doc_id, src in docs.items() if src.get("vault") == vault
         }
 
     def bulk(self, actions):
@@ -96,15 +106,17 @@ def test_settings_from_env_and_yaml(tmp_path=None):
             "index: {alias: notes, parser: default, chunker: heading, "
             "chunk_max_chars: 900, chunk_overlap: 50, embedding_model: off}\n"
         )
-        s = load_settings({
-            "CONFIG_PATH": str(cfg),
-            "ES_URL": "http://h:9200",
-            "CHUNK_OVERLAP": "",  # empty env var falls back to YAML
-            "GEMINI_API_KEY": "SECRET-KEY-123",
-            "GROQ_API_KEY": "GROQ-SECRET-456",
-            "GROQ_MODEL": "qwen/qwen3.8-27b",
-            "LLM_DEFAULT_PROVIDER": "ollama",
-        })
+        s = load_settings(
+            {
+                "CONFIG_PATH": str(cfg),
+                "ES_URL": "http://h:9200",
+                "CHUNK_OVERLAP": "",  # empty env var falls back to YAML
+                "GEMINI_API_KEY": "SECRET-KEY-123",
+                "GROQ_API_KEY": "GROQ-SECRET-456",
+                "GROQ_MODEL": "qwen/qwen3.8-27b",
+                "LLM_DEFAULT_PROVIDER": "ollama",
+            }
+        )
     assert s.vault("s").ignore == ("x",) and s.chunk_max_chars == 900 and s.chunk_overlap == 50
     assert s.parser == "default" and s.chunker == "heading" and s.embedding_model == "off"
     assert s.es_url == "http://h:9200" and s.llm.default_provider == "ollama"
@@ -160,6 +172,11 @@ def test_sync_blocks_on_embedding_model_mismatch_until_full_reindex(tmp_path):
         svc.sync("fixture")
 
     # Full reindex builds notes_v2 with new _meta and swaps the alias, unblocking subsequent syncs
+    class _DummyEmbedder:
+        def embed_documents(self, texts: list[str]) -> list[list[float]]:
+            return [[0.1] * svc.settings.embed.dims for _ in texts]
+
+    svc.embedder = _DummyEmbedder()
     reports = svc.full_reindex()
     assert len(reports) == 1 and reports[0].index == "notes_v2"
     assert backend.current_index() == "notes_v2"

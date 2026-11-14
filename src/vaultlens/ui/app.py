@@ -1,4 +1,5 @@
 """Streamlit entrypoint: navigation + shared sidebar (vault, saved searches, index status, LLM)."""
+
 from __future__ import annotations
 
 import streamlit as st
@@ -14,7 +15,14 @@ def _load_saved(name: str, spec: dict) -> None:
     st.session_state.pop("confirm_delete", None)
     st.session_state["query"] = spec.get("query", "")
     st.session_state["query_input"] = spec.get("query", "")
-    for agg, field in (("type", "type"), ("folder", "folder.tree"), ("tags", "tags"), ("status", "status")):
+    saved_mode = spec.get("match_mode", "any")
+    st.session_state["match_mode"] = saved_mode if saved_mode in ("any", "all", "phrase") else "any"
+    for agg, field in (
+        ("type", "type"),
+        ("folder", "folder.tree"),
+        ("tags", "tags"),
+        ("status", "status"),
+    ):
         st.session_state[f"f_{agg}"] = spec.get("filters", {}).get(field, [])
     components.set_meta_rows("sr", spec.get("filters", {}))
     components.set_date_range("sr", spec.get("date_range"))
@@ -31,7 +39,12 @@ def sidebar() -> None:
         st.subheader("Saved searches")
         saved = services.store().saved_searches()
         for item in saved:
-            st.button(item["name"], key=f"saved_{item['name']}", on_click=_load_saved, args=(item["name"], item["spec"]))
+            st.button(
+                item["name"],
+                key=f"saved_{item['name']}",
+                on_click=_load_saved,
+                args=(item["name"], item["spec"]),
+            )
         if not saved:
             st.caption("None yet. Save one from the Search page.")
 
@@ -39,14 +52,20 @@ def sidebar() -> None:
         ok, state = be.health()
         if ok:
             stats = be.stats()
-            st.caption(f"Elasticsearch {state} · {stats['docs']:,} notes · {stats['chunks']:,} chunks")
+            st.caption(
+                f"Elasticsearch {state} · {stats['docs']:,} notes · {stats['chunks']:,} chunks"
+            )
         else:
             st.error(f"Elasticsearch unreachable ({state})")
 
         st.subheader("LLM")
         st.radio(
-            "Provider", PROVIDERS, key="llm_provider",
-            index=PROVIDERS.index(cfg.llm.default_provider) if cfg.llm.default_provider in PROVIDERS else 0,
+            "Provider",
+            PROVIDERS,
+            key="llm_provider",
+            index=PROVIDERS.index(cfg.llm.default_provider)
+            if cfg.llm.default_provider in PROVIDERS
+            else 0,
             help="'off' = plain Elasticsearch search. Ask mode needs ollama, gemini, or groq.",
         )
         prov = services.provider()
@@ -55,7 +74,9 @@ def sidebar() -> None:
                 "Groq model",
                 GROQ_MODELS,
                 key="groq_model",
-                index=GROQ_MODELS.index(cfg.llm.groq_model) if cfg.llm.groq_model in GROQ_MODELS else 0,
+                index=GROQ_MODELS.index(cfg.llm.groq_model)
+                if cfg.llm.groq_model in GROQ_MODELS
+                else 0,
                 help="Auto-falls back to the other Groq model on HTTP 429 rate limits.",
             )
         if prov in OFF_DEVICE:

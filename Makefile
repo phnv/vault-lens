@@ -35,6 +35,9 @@ sync:            ## incremental index of all vaults
 reindex:         ## full reindex (builds notes_vN+1, swaps alias)
 	$(APP) vaultlens reindex
 
+pull-models:     ## GATE: multi-GB download. Prefetch rerank + embedding models into the hfcache volume
+	$(COMPOSE) run --rm --no-deps app python -m vaultlens.semantic.prefetch
+
 test:            ## unit tests (offline: no Elasticsearch needed)
 	$(COMPOSE) run --rm --no-deps app pytest -q
 

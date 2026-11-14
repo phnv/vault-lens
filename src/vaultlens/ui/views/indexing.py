@@ -1,4 +1,5 @@
 """Vaults and Indexing page (wireframe: Vaults and Indexing)."""
+
 from __future__ import annotations
 
 import streamlit as st
@@ -24,11 +25,24 @@ except Exception as exc:
 if not compat_ok:
     st.error(compat_msg)
 
-m1, m2, m3, m4 = st.columns(4)
+chunks_total = stats.get("chunks", 0)
+embedded_total = stats.get("embedded_chunks", 0)
+if cfg.embeddings_enabled and chunks_total > 0 and embedded_total == 0:
+    st.error(
+        f"Index has {chunks_total:,} chunks but 0 embedding vectors "
+        f"(configured embedding model: `{cfg.embedding_model}`). Run Full reindex (`make reindex`)."
+    )
+elif cfg.embeddings_enabled and embedded_total < chunks_total:
+    st.warning(
+        f"Partial embeddings: {embedded_total:,} / {chunks_total:,} chunks have vectors."
+    )
+
+m1, m2, m3, m4, m5 = st.columns(5)
 m1.metric("Documents", f"{stats['docs']:,}")
-m2.metric("Chunks", f"{stats['chunks']:,}")
-m3.metric("Index size", f"{stats['size_bytes'] / 1_048_576:.1f} MB")
-m4.metric("Alias", f"{cfg.es_alias} → {stats['index'] or 'none'}")
+m2.metric("Chunks", f"{chunks_total:,}")
+m3.metric("Embedded chunks", f"{embedded_total:,}")
+m4.metric("Index size", f"{stats['size_bytes'] / 1_048_576:.1f} MB")
+m5.metric("Alias", f"{cfg.es_alias} → {stats['index'] or 'none'}")
 
 st.caption(
     f"Pipeline: parser=`{cfg.parser}` (v{PARSER_VERSION}) · "
@@ -81,5 +95,6 @@ if st.button("Full reindex"):
 st.subheader("Mapping inspector")
 st.dataframe(
     [{"field": f, "type": t} for f, t in mapped_fields(load_mapping()).items()],
-    hide_index=True, use_container_width=True,
+    hide_index=True,
+    use_container_width=True,
 )

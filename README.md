@@ -5,6 +5,8 @@ Elasticsearch does the searching; an optional LLM answers questions from the mat
 
 - **Search**: keyword search with filters, facets, highlights, "more like this", link counts. No LLM involved.
 - **Ask**: the same retrieval, then an LLM (local Ollama, Gemini, or Groq) answers with citations.
+- **Hybrid**: BM25 + semantic vector search (`BAAI/bge-m3` or `Qwen/Qwen3-Embedding-0.6B`) fused via client-side RRF and reranked locally with `cross-encoder/ms-marco-MiniLM-L-6-v2`. No LLM involved.
+- **AI Search & Agentic**: LangGraph pipelines (using Groq or Gemini) that expand/decompose queries, run multi-query hybrid retrieval, and (in Agentic mode) self-correct with evidence grading and validated filter relaxation.
 - **Workbench**: see and tune the exact Elasticsearch query, explain/profile it, compare analyzers.
 - **Evaluate**: judge a set of queries once, then measure each ranking change (nDCG@10).
 - Vaults are mounted **read-only**; the app never modifies your notes.
@@ -50,8 +52,13 @@ Ask mode (optional):
 | `ES_VERSION`, `ES_HEAP` | `8.17.0`, `512m` | Elasticsearch Docker tag and JVM heap cap |
 | `PARSER`, `CHUNKER` | `default`, `heading` | Active parser (`PARSERS`) and chunker (`CHUNKERS`) strategy names |
 | `CHUNK_MAX_CHARS`, `CHUNK_OVERLAP` | `1500`, `0` | Max chunk length and overlap characters (set in `config/vaultlens.yaml` or `.env`) |
-| `EMBEDDING_MODEL` | `off` | Embedding model identifier (`off` in v1; guarded via index `_meta` and `content_hash`) |
-| `LLM_PROVIDER` | `ollama` | Active provider (`off`, `ollama`, `gemini`, or `groq`) |
+| `EMBEDDING_MODEL` | `off` | `off` disables embeddings; `on` (or model name) enables `EMBED_MODEL` (`make reindex` required on change) |
+| `EMBED_PROVIDER`, `EMBED_MODEL`, `EMBED_DIMS`, `EMBED_MAX_TOKENS`, `EMBED_BATCH` | `sentence_transformers`, `BAAI/bge-m3`, `1024`, `512`, `16` | Bi-encoder embedding configuration (`BAAI/bge-m3` or `Qwen/Qwen3-Embedding-0.6B`) |
+| `RERANK_ENABLED`, `RERANK_MODEL`, `RERANK_MODE`, `RERANK_POOL` | `true`, `cross-encoder/ms-marco-MiniLM-L-6-v2`, `blend`, `20` | Local CPU cross-encoder reranking (`blend` or `replace`) |
+| `HYBRID_CANDIDATES`, `RRF_K` | `30`, `60` | Per-leg candidate depth and Reciprocal Rank Fusion constant |
+| `AGENT_MAX_ITERATIONS`, `AGENT_MAX_LLM_CALLS`, `AGENT_TIMEOUT_S`, `AGENT_MIN_HITS` | `3`, `8`, `120`, `3` | Hard budgets and filter auto-relaxation floor for the Agentic tier |
+| `HF_HOME` | `/models` | HuggingFace cache directory inside the container (mounted on `hfcache` volume) |
+| `LLM_PROVIDER` | `ollama` | Active provider (`off`, `ollama`, `gemini`, or `groq`; AI Search & Agentic require `groq` or `gemini`) |
 | `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | Endpoint to host Windows Ollama instance |
 | `OLLAMA_MODEL` | `qwen2.5:1.5b-instruct` | Compact LLM model suited for WSL memory limits |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | empty, `gemini-2.5-flash` | Gemini API credentials |
@@ -82,18 +89,19 @@ More vaults: add a read-only mount in `docker-compose.yml`, then an entry in `co
 | `make status` | Display Elasticsearch cluster health and index document counts. |
 | `make sync` | Fast incremental index: scans notes, computes hash diff, and indexes new/modified files. |
 | `make reindex` | Full zero-downtime reindex: builds `notes_v{N+1}`, indexes all vaults, swaps alias, deletes old index. |
+| `make pull-models` | **GATE**: Prefetch embedding (`EMBED_MODEL`) and cross-encoder (`RERANK_MODEL`) weights into the `hfcache` volume (`/models`). |
 
 ### Headless CLI (`vaultlens` inside container or venv)
 
 Run via `docker compose exec app vaultlens <cmd>`:
 
 ```bash
-docker compose exec app vaultlens status                  # Check cluster, pipeline & alias status
-docker compose exec app vaultlens sync                    # Incremental scan & indexing (--force to re-index all)
-docker compose exec app vaultlens reindex                 # Zero-downtime reindex (builds notes_vN+1, swaps alias)
-docker compose exec app vaultlens search "my search"      # Keyword search with facets & scores
-docker compose exec app vaultlens ask "What is X?"        # Grounded Q&A with citations
-docker compose exec app vaultlens eval                    # Run ranking evaluations (nDCG@10)
+docker compose exec app vaultlens status                                         # Check cluster, pipeline & alias status
+docker compose exec app vaultlens sync                                           # Incremental scan & indexing (--force to re-index all)
+docker compose exec app vaultlens reindex                                        # Zero-downtime reindex (builds notes_vN+1, swaps alias)
+docker compose exec app vaultlens search "my search" --mode simple|hybrid        # Keyword or hybrid search (--trace for JSONL trace)
+docker compose exec app vaultlens ask "What is X?" --tier ask|ai_search|agentic  # Grounded Q&A across tiers (--provider groq|gemini, --trace)
+docker compose exec app vaultlens eval                                           # Run ranking evaluations (nDCG@10)
 ```
 
 ### Quality & Tests

@@ -1,4 +1,5 @@
 """Judged-query evaluation via the Elasticsearch _rank_eval API."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -38,7 +39,9 @@ def load_judgments(path: str | Path) -> list[JudgedQuery]:
             ratings[str(rel["doc_id"])] = rating
         if not item.get("query") or not ratings:
             raise ValueError(f"query {item.get('id')!r} needs text and at least one judgment")
-        out.append(JudgedQuery(str(item["id"]), item["query"], list(item.get("vaults") or []), ratings))
+        out.append(
+            JudgedQuery(str(item["id"]), item["query"], list(item.get("vaults") or []), ratings)
+        )
     return out
 
 
@@ -49,14 +52,16 @@ def build_rank_eval_body(
     requests = []
     for q in judged:
         body = build_search_body(strategy_spec(strategy, q.query, q.vaults, size=k))
-        requests.append({
-            "id": q.id,
-            "request": {"query": body["query"]},
-            "ratings": [
-                {"_index": concrete_index, "_id": doc_id, "rating": r}
-                for doc_id, r in sorted(q.ratings.items())
-            ],
-        })
+        requests.append(
+            {
+                "id": q.id,
+                "request": {"query": body["query"]},
+                "ratings": [
+                    {"_index": concrete_index, "_id": doc_id, "rating": r}
+                    for doc_id, r in sorted(q.ratings.items())
+                ],
+            }
+        )
     return {"requests": requests, "metric": {"ndcg": {"k": k, "normalize": True}}}
 
 

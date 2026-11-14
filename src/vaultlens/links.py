@@ -1,4 +1,5 @@
 """Deep links back to the original file."""
+
 from __future__ import annotations
 
 from urllib.parse import quote

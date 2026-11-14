@@ -1,4 +1,5 @@
 """Minimal provider interface and shared LangChain base. Ollama, Gemini and Groq (docs/adr/0004)."""
+
 from __future__ import annotations
 
 import time
@@ -51,9 +52,7 @@ class LangChainChatClient:
         if isinstance(content, str):
             return content
         if isinstance(content, list):
-            return "".join(
-                b.get("text", "") if isinstance(b, dict) else str(b) for b in content
-            )
+            return "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content)
         return str(content or "")
 
     def _invoke_chat(self, chat: Any, target_model: str, system: str, user: str) -> LLMResult:
@@ -85,6 +84,4 @@ class LangChainChatClient:
         except LLMError:
             raise
         except Exception as exc:
-            raise LLMError(
-                f"{self.provider.title()} stream failed ({type(exc).__name__})"
-            ) from exc
+            raise LLMError(f"{self.provider.title()} stream failed ({type(exc).__name__})") from exc

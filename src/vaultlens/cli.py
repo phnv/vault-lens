@@ -1,7 +1,10 @@
 """Headless entrypoint. Lets humans and coding agents verify the core without the UI.
 
-  vaultlens status | sync [--vault SLUG] [--force] | reindex | search QUERY | ask QUESTION | eval
+vaultlens status | sync [--vault SLUG] [--force] | reindex | search QUERY [--mode simple|hybrid]
+vaultlens ask QUESTION [--tier ask|ai_search|agentic] [--provider ollama|gemini|groq] [--trace]
+vaultlens eval
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,14 +34,18 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("reindex")
     q = sub.add_parser("search")
     q.add_argument("query")
+    q.add_argument("--mode", choices=["simple", "hybrid"], default="simple")
     q.add_argument("--vault", action="append", default=[])
     q.add_argument("--filter", action="append", default=[], metavar="FIELD=VALUE")
     q.add_argument("--size", type=int, default=10)
     q.add_argument("--show-query", action="store_true")
+    q.add_argument("--trace", action="store_true")
     a = sub.add_parser("ask")
     a.add_argument("question")
-    a.add_argument("--provider", choices=["ollama", "gemini", "groq"], default="ollama")
+    a.add_argument("--tier", choices=["ask", "ai_search", "agentic"], default="ask")
+    a.add_argument("--provider", choices=["ollama", "gemini", "groq"], default=None)
     a.add_argument("--model", default=None)
+    a.add_argument("--trace", action="store_true")
     e = sub.add_parser("eval")
     e.add_argument("--judgments", default="config/judged_queries.yaml")
     e.add_argument("--strategies", nargs="+", default=["A", "B", "C"])
@@ -77,9 +84,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd in ("sync", "reindex"):
         from .indexing.service import IndexCompatibilityError, IndexService
+        from .semantic.embedder import get_embedder
         from .store import JsonStore
 
-        svc = IndexService(backend, settings, JsonStore(settings.data_dir))
+        emb = get_embedder(settings) if settings.embeddings_enabled else None
+        svc = IndexService(backend, settings, JsonStore(settings.data_dir), embedder=emb)
         try:
             if args.cmd == "reindex":
                 reports = svc.full_reindex()
@@ -106,6 +115,31 @@ def main(argv: list[str] | None = None) -> int:
         )
         if args.show_query:
             print(compiled_query(spec))
+
+        if args.mode == "hybrid":
+            from .agents.trace import TraceSink
+            from .search.hybrid import HybridSearcher
+            from .semantic.embedder import get_embedder
+            from .semantic.reranker import get_reranker
+
+            sink = TraceSink()
+            searcher = HybridSearcher(
+                backend.raw_search,
+                get_embedder(settings),
+                get_reranker(settings),
+                cfg=settings.hybrid,
+                rerank_cfg=settings.rerank,
+                trace=sink,
+                oversized_chars=max(1600, settings.chunk_max_chars),
+            )
+            hresp = searcher.search(args.query, spec, top_n=args.size)
+            if args.trace and sink.events:
+                print(sink.to_jsonl())
+            print(f"{hresp.total} results in {hresp.took_ms} ms")
+            for h in hresp.hits:
+                print(f"- {h.title}  [{h.vault}:{h.path}]  score={h.score}")
+            return 0
+
         resp = parse_response(backend.search(spec))
         print(f"{resp.total} results in {resp.took_ms} ms")
         for h in resp.hits:
@@ -116,15 +150,59 @@ def main(argv: list[str] | None = None) -> int:
         from .ask import AskService
         from .llm.base import LLMError
         from .llm.factory import get_client
+        from .models import SearchSpec
+
+        provider = args.provider or settings.llm.default_provider
+        if args.tier == "ask":
+            try:
+                llm = get_client(provider, settings.llm, groq_model=args.model)
+                if llm is None:
+                    raise LLMError("LLM provider is 'off'; pass --provider ollama|gemini|groq.")
+                result = AskService(backend.search, llm).answer(args.question)
+            except LLMError as exc:
+                print(f"LLM error: {exc}", file=sys.stderr)
+                return 2
+            print(result.answer)
+            for src in result.sources:
+                print(f"  [{src.n}] {src.title} ({src.path})")
+            return 0
+
+        from .agents.agentic import run_agentic_search
+        from .agents.ai_search import run_ai_search
+        from .agents.llm import get_chat_model
+        from .agents.trace import TraceSink
+        from .search.hybrid import HybridSearcher
+        from .semantic.embedder import get_embedder
+        from .semantic.reranker import get_reranker
 
         try:
-            llm = get_client(args.provider, settings.llm, groq_model=args.model)
-            result = AskService(backend.search, llm).answer(args.question)  # type: ignore[arg-type]
+            chat_model = get_chat_model(provider, settings.llm, groq_model=args.model)
+            sink = TraceSink()
+            searcher = HybridSearcher(
+                backend.raw_search,
+                get_embedder(settings),
+                get_reranker(settings),
+                cfg=settings.hybrid,
+                rerank_cfg=settings.rerank,
+                trace=sink,
+                oversized_chars=max(1600, settings.chunk_max_chars),
+            )
+            spec = SearchSpec(query=args.question, facets=False)
+            if args.tier == "ai_search":
+                out = run_ai_search(args.question, spec, chat_model, searcher, sink=sink)
+            else:
+                out = run_agentic_search(
+                    args.question, spec, chat_model, searcher, cfg=settings.agent, sink=sink
+                )
         except LLMError as exc:
             print(f"LLM error: {exc}", file=sys.stderr)
             return 2
-        print(result.answer)
-        for src in result.sources:
+
+        if args.trace and sink.events:
+            print(sink.to_jsonl())
+        if out.answer:
+            print(out.answer)
+        for src in out.sources:
             print(f"  [{src.n}] {src.title} ({src.path})")
         return 0
 

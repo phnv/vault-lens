@@ -3,6 +3,7 @@
 v1 retrieval is Elasticsearch keyword search only (docs/adr/0003). Notes are untrusted data:
 the prompt fences them and tells the model never to follow instructions found inside them.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
@@ -43,12 +44,13 @@ class AskResult:
 
 
 def ask_spec(question: str, base: SearchSpec | None = None, top_k: int = 5) -> SearchSpec:
-    """Natural-language questions rarely have every word in one note, so match 'any' with a floor."""
+    """Build retrieval spec for Ask, preserving the caller's match_mode and filters."""
+    eff = base or SearchSpec()
+    msm = eff.minimum_should_match if eff.minimum_should_match is not None else "40%"
     return replace(
-        base or SearchSpec(),
+        eff,
         query=question,
-        match_mode="any",
-        minimum_should_match="40%",
+        minimum_should_match=msm,
         fields=dict(STRATEGIES["C"]["fields"]),
         size=top_k,
         from_=0,
@@ -63,10 +65,12 @@ def ask_spec(question: str, base: SearchSpec | None = None, top_k: int = 5) -> S
 
 
 def passages_for(hit: Hit, max_chars: int = 900, per_note: int = 2) -> list[tuple[str, str]]:
-    """(heading, text) passages: best chunks first, highlight snippet as fallback."""
+    """(heading, text) passages: best chunks first, highlight snippet or title as fallback."""
     out = [(c.heading, c.text[:max_chars]) for c in hit.chunks if c.text][:per_note]
     if not out and hit.snippet:
         out = [("", strip_marks(hit.snippet))]
+    if not out and (hit.title or hit.path):
+        out = [("", hit.title or hit.path)]
     return out
 
 
@@ -95,7 +99,9 @@ class AskService:
     def __init__(self, search: Callable[[SearchSpec], dict[str, Any]], llm: LLMClient) -> None:
         self.search, self.llm = search, llm
 
-    def retrieve(self, question: str, base: SearchSpec | None = None) -> tuple[SearchSpec, str, list[Source]]:
+    def retrieve(
+        self, question: str, base: SearchSpec | None = None
+    ) -> tuple[SearchSpec, str, list[Source]]:
         spec = ask_spec(question, base)
         context, sources = build_context(parse_response(self.search(spec)).hits)
         return spec, context, sources
@@ -107,7 +113,9 @@ class AskService:
         result = self.llm.complete(SYSTEM_PROMPT, build_user_prompt(question, context))
         return AskResult(result.text, sources, spec, result)
 
-    def stream(self, question: str, base: SearchSpec | None = None) -> tuple[list[Source], Iterator[str]]:
+    def stream(
+        self, question: str, base: SearchSpec | None = None
+    ) -> tuple[list[Source], Iterator[str]]:
         spec, context, sources = self.retrieve(question, base)
         if not sources:
             return [], iter([NO_RESULTS])

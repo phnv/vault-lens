@@ -1,4 +1,5 @@
 """Tiny JSON state in DATA_DIR: sync reports and saved searches. Atomic writes."""
+
 from __future__ import annotations
 
 import json
@@ -9,7 +10,7 @@ from typing import Any
 
 
 def matches_saved(saved_spec: dict[str, Any], query: str, filters: dict[str, list[str]]) -> bool:
-    """True when the current query and filters equal a saved spec (filter order and empty lists ignored)."""
+    """True when current query and filters equal a saved spec (order/empty lists ignored)."""
 
     def norm(f: dict[str, list[str]] | None) -> dict[str, set[str]]:
         return {k: set(v) for k, v in (f or {}).items() if v}

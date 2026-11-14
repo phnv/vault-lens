@@ -14,4 +14,12 @@ index:
   chunker: heading
   chunk_max_chars: 1500
   chunk_overlap: 0
-  embedding_model: "off"
+  embedding_model: "BAAI/bge-m3"
+
+# Semantic search and AI tiers (ADR-0009). Env vars (EMBED_*, RERANK_*, HYBRID_*, AGENT_*) override these;
+# embedding_model above is the single source of truth for the embedding model.
+semantic:
+  embed: {provider: sentence_transformers, dims: 1024, max_tokens: 512, batch: 16}
+  rerank: {enabled: true, model: cross-encoder/ms-marco-MiniLM-L-6-v2, mode: blend, pool: 20}
+  hybrid: {candidates: 30, rrf_k: 60}
+  agent: {max_iterations: 3, max_llm_calls: 8, timeout_s: 120, min_hits: 3}

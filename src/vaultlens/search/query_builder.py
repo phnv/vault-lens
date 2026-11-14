@@ -2,6 +2,7 @@
 
 The Workbench "compiled query" view shows exactly what this returns.
 """
+
 from __future__ import annotations
 
 import json
@@ -16,7 +17,12 @@ from ..models import SearchSpec
 ALLOWED_FILTER_FIELDS = {"vault", "type", "status", "tags", "folder", "folder.tree", "links_out"}
 ALLOWED_QUERY_FIELDS = {"title", "title.edge", "aliases", "body", "body.pt", "body.en"}
 ALLOWED_MATCH_TYPES = {
-    "best_fields", "most_fields", "cross_fields", "phrase", "phrase_prefix", "bool_prefix",
+    "best_fields",
+    "most_fields",
+    "cross_fields",
+    "phrase",
+    "phrase_prefix",
+    "bool_prefix",
 }
 FUZZY_TYPES = {"best_fields", "most_fields", "bool_prefix"}
 PHRASE_TYPES = {"phrase", "phrase_prefix"}
@@ -162,6 +168,11 @@ def _chunk_clause(spec: SearchSpec) -> dict[str, Any]:
     }
 
 
+def filter_clauses(spec: SearchSpec) -> list[dict[str, Any]]:
+    """Public filter clauses for `spec` (reused by lexical search and nested kNN)."""
+    return _filters(spec)
+
+
 def _filters(spec: SearchSpec) -> list[dict[str, Any]]:
     clauses: list[dict[str, Any]] = []
     if spec.vaults:
@@ -226,8 +237,10 @@ def compiled_query(spec: SearchSpec) -> str:
     return json.dumps(build_search_body(spec), indent=2, ensure_ascii=False)
 
 
-def strategy_spec(name: str, query: str, vaults: list[str] | None = None, size: int = 10) -> SearchSpec:
-    """Spec for an Evaluate strategy: no chunks/facets/highlight so only note-level ranking counts."""
+def strategy_spec(
+    name: str, query: str, vaults: list[str] | None = None, size: int = 10
+) -> SearchSpec:
+    """Spec for Evaluate: no chunks/facets/highlight so only note-level ranking counts."""
     cfg = STRATEGIES[name]
     return replace(
         SearchSpec(),
@@ -267,14 +280,16 @@ def more_like_this_body(doc_id: str, vault: str | None = None, size: int = 5) ->
     return {
         "query": {
             "bool": {
-                "must": [{
-                    "more_like_this": {
-                        "fields": ["title", "body.pt", "body.en"],
-                        "like": [{"_id": doc_id}],
-                        "min_term_freq": 1,
-                        "min_doc_freq": 1,
+                "must": [
+                    {
+                        "more_like_this": {
+                            "fields": ["title", "body.pt", "body.en"],
+                            "like": [{"_id": doc_id}],
+                            "min_term_freq": 1,
+                            "min_doc_freq": 1,
+                        }
                     }
-                }],
+                ],
                 "filter": flt,
             }
         },

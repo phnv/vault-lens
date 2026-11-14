@@ -1,4 +1,5 @@
 """Raw Elasticsearch response -> SearchResponse. Pure, so it is unit-testable offline."""
+
 from __future__ import annotations
 
 import html
@@ -27,12 +28,14 @@ def _chunk_hits(hit: dict[str, Any]) -> list[ChunkHit]:
         src = ih.get("_source", {})
         src = src.get("chunks", src)
         frag = (ih.get("highlight", {}) or {}).get("chunks.text.pt", [""])
-        out.append(ChunkHit(
-            heading=src.get("heading", ""),
-            position=int(src.get("position", ih.get("_nested", {}).get("offset", 0))),
-            text=src.get("text", ""),
-            snippet=frag[0] if frag else "",
-        ))
+        out.append(
+            ChunkHit(
+                heading=src.get("heading", ""),
+                position=int(src.get("position", ih.get("_nested", {}).get("offset", 0))),
+                text=src.get("text", ""),
+                snippet=frag[0] if frag else "",
+            )
+        )
     return out
 
 
