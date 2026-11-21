@@ -1,4 +1,4 @@
-# vaultlens
+# vaultlens (IN-PROGRESS)
 
 Local-first search workbench for markdown vaults (Obsidian-style folders of `.md` files).
 Elasticsearch does the searching; an optional LLM answers questions from the matching notes.
@@ -10,9 +10,6 @@ Elasticsearch does the searching; an optional LLM answers questions from the mat
 - **Workbench**: see and tune the exact Elasticsearch query, explain/profile it, compare analyzers.
 - **Evaluate**: judge a set of queries once, then measure each ranking change (nDCG@10).
 - Vaults are mounted **read-only**; the app never modifies your notes.
-
-> Status: scaffold. Core logic is unit-tested offline; Elasticsearch, Streamlit and LLM integration are
-> **not yet verified** (see `docs/ROADMAP.md` M0-M1). UI wireframes: the "Vault Search - Streamlit wireframes" artifact.
 
 ## Quick start
 
