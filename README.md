@@ -221,8 +221,9 @@ for name in ("standard", "std_folded", "pt_folded", "en_folded", "es_folded"):
      ```
 
 
-## Development
+## Development & Customization
 
 Read `AGENTS.md` first (rules for humans and coding agents), then `docs/ARCHITECTURE.md`, `docs/SPEC.md`,
-`docs/ROADMAP.md`. When you change something, follow `docs/project-updates-guide.md`.
+`docs/CUSTOMIZATION_AND_SETUP.md` (human guide to out-of-UI setups, prompt mapping across tiers/nodes, and config override precedence),
+and `docs/ROADMAP.md`. When you change something, follow `docs/project-updates-guide.md`.
 

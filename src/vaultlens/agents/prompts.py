@@ -11,22 +11,90 @@ from collections.abc import Sequence
 from ..ask import NO_RESULTS, SYSTEM_PROMPT, Source
 from ..models import Passage
 
-TRANSFORM_SYSTEM_PROMPT = (
-    "You transform a user question for hybrid search over a bilingual (Portuguese and English) "
-    "Markdown knowledge vault.\n"
-    "- Provide up to 3 concise alternative phrasings in `rewrites` (include a PT<->EN translation "
-    "if the question is in one language and notes may be in the other).\n"
-    "- If the question has multiple parts, decompose it into up to 4 atomic `sub_questions`; "
-    "leave `sub_questions` empty when the question is already atomic."
+_VAULT_CONTEXT = (
+    "The vault is a personal, bilingual (Portuguese and English) collection of Markdown notes: "
+    "journal entries, task lists, meeting and project notes, references, ideas. The notes were "
+    "written by their owner, for themselves: terse, informal, often fragmentary, with headings, "
+    "bullet lists, checkboxes, #tags, [[wikilinks]], abbreviations and jargon, and PT and EN "
+    "mixed freely. The search engine is hybrid: BM25 keyword matching plus semantic vector "
+    "similarity between the query and note chunks.\n"
 )
 
+# Shared by TRANSFORM, PLAN and GRADE (`next_queries`): bridges question-language to note-language.
+_QUERY_WRITING_RULES = (
+    "## How to write search queries\n"
+    "The user's question is a statement of INTENT. It tells you what to look for and what the "
+    "final answer must contain, but it is not a search query. Notes almost never contain the "
+    "question itself, so searching for its wording, or for a polite paraphrase of it, matches "
+    "poorly in both keyword and semantic search. Write queries that look like the TEXT YOU "
+    "EXPECT TO FIND in a note that answers the question.\n"
+    "To get there, think through these steps silently:\n"
+    "1. Intent: what kind of information or note would answer this (a list, a decision, a "
+    "definition, a log entry, a person, a date, a procedure)?\n"
+    "2. Drop question scaffolding, which no note contains: interrogatives and auxiliaries "
+    "('what', 'how', 'do I', 'can you'), requests ('find', 'show me', 'list'), self-references "
+    "('my', 'I', 'the user'), and words about the vault itself ('notes', 'vault', 'wrote "
+    "about').\n"
+    "3. Remove constraints that are not topics. Time ('recent', 'last week', 'in 2024'), status "
+    "('pending', 'done', 'open') and scope ('in project X') qualifiers usually get resolved by "
+    "filters, ranking or the final answer, not by matching words. Keep one only when a note "
+    "would plausibly write that word as text (for example a 'Pendente' heading or a "
+    "'Status: open' line).\n"
+    "4. Expand into the vault's vocabulary: the core concept plus the terms a note would really "
+    "use. That means synonyms, PT<->EN equivalents, abbreviations, jargon, likely headings, tag "
+    "names and typical markers (for example '- [ ]' for open tasks, 'TODO', 'decisão', 'ideia', "
+    "'reunião', 'ref').\n"
+    "Query shapes, mix them across your queries:\n"
+    "- Keyword query (for BM25): 2-6 content words or a short noun phrase, no stop words, no "
+    "question form. Put PT and EN variants in separate queries when they differ.\n"
+    "- Note-like statement (for semantic search): one short declarative line written the way "
+    "the owner would jot it in a note, NOT a question and NOT addressed to anyone.\n"
+    "Each query must add a new angle (another language, synonym set, or shape). Do not output "
+    "near-duplicates of each other or of the original question, because the original question "
+    "is already searched verbatim.\n"
+    "Examples (these show the transformation; do not copy their vocabulary):\n"
+    "- 'what are my recent pending tasks?' -> 'tarefas pendentes', 'to-do open tasks', "
+    "'- [ ] pendências a fazer'\n"
+    "- 'como decidimos lidar com autenticação no projeto X?' -> 'X autenticação decisão', "
+    "'X auth decision login', 'decidido usar OAuth para login no X'\n"
+    "- 'did I ever write anything about burnout?' -> 'burnout esgotamento', 'exhaustion "
+    "overwork stress', 'me sentindo esgotado, sem energia'\n"
+)
+
+TRANSFORM_SYSTEM_PROMPT = (
+    "You turn a user's question into search queries for a personal Markdown knowledge vault.\n"
+    + _VAULT_CONTEXT
+    + "\n"
+    + _QUERY_WRITING_RULES
+    + "\n## Output fields\n"
+    "- `rewrites`: up to 3 search queries that follow the rules above. They are retrieval "
+    "strings, NOT rephrased questions.\n"
+    "- `sub_questions`: ONLY when the question has several distinct parts, up to 4 atomic, "
+    "self-contained natural-language questions (in the user's language) that the final answer "
+    "must cover one by one. They are also searched, so make each one specific and free of "
+    "filler. Leave it empty when the question is atomic, and never use it to restate the "
+    "question.\n"
+)
+
+### This must Include KAG and navigation instructions, eventually
 PLAN_SYSTEM_PROMPT = (
-    "You plan a search strategy over a bilingual (Portuguese and English) Markdown vault.\n"
-    "- Provide up to 3 alternative phrasings in `rewrites` (including PT<->EN translation).\n"
-    "- Decompose multi-part questions into up to 4 atomic `sub_questions` (or empty if atomic).\n"
-    "- Optionally propose `filters` ONLY when the question explicitly targets a known facet value "
-    "from the allowed facets list provided. Do not guess restrictive filters if unsure.\n"
-    "- Provide a 1-sentence `rationale`."
+    "You plan the retrieval strategy for answering a user's question from a personal Markdown "
+    "knowledge vault.\n"
+    + _VAULT_CONTEXT
+    + "\n"
+    + _QUERY_WRITING_RULES
+    + "\n## Output fields\n"
+    "- `rewrites`: up to 3 search queries that follow the rules above. They are retrieval "
+    "strings, NOT rephrased questions.\n"
+    "- `sub_questions`: ONLY when the question has several distinct parts, up to 4 atomic, "
+    "self-contained natural-language questions (in the user's language) that the final answer "
+    "must cover one by one. Leave it empty when the question is atomic.\n"
+    "- `filters`: optional. Use filters for the constraints you removed from the queries "
+    "(status, type, folder, tags), but ONLY with values that appear verbatim in the allowed "
+    "facet values provided and ONLY when the question clearly asks for them. A wrong filter "
+    "hides the answer, so when unsure leave it out and rely on the queries.\n"
+    "- `rationale`: one sentence covering what kind of note you expect to answer the question "
+    "and why you chose these queries and filters.\n"
 )
 
 GRADE_SYSTEM_PROMPT = (
@@ -36,7 +104,10 @@ GRADE_SYSTEM_PROMPT = (
     "simply does not contain further information (insufficiency of the notes is a valid outcome "
     "and is NOT a reason to loop forever).\n"
     "- If `sufficient=false`, list the specific unanswered points in `missing` and propose up to 3 "
-    "distinct `next_queries` (different keywords or language) not yet tried."
+    "`next_queries` not yet tried, written by the rules below. Use the vocabulary you saw in "
+    "the excerpts (terms, headings, tags, names) to get closer to how the vault phrases things.\n"
+    "\n"
+    + _QUERY_WRITING_RULES
 )
 
 

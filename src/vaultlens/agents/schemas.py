@@ -10,11 +10,14 @@ class QueryPlan(BaseModel):
 
     rewrites: list[str] = Field(
         default_factory=list,
-        description="Up to 3 alternative phrasings (including PT<->EN translation when helpful).",
+        description=(
+            "Up to 3 search queries phrased like note text (keywords or a note-like line, "
+            "PT/EN variants), not rephrased questions."
+        ),
     )
     sub_questions: list[str] = Field(
         default_factory=list,
-        description="Up to 4 atomic sub-questions when multi-part; empty if atomic.",
+        description="Up to 4 atomic sub-questions the answer must cover; empty if atomic.",
     )
 
 
@@ -45,5 +48,5 @@ class Grade(BaseModel):
     )
     next_queries: list[str] = Field(
         default_factory=list,
-        description="Up to 3 refined search queries to try next when sufficient is False.",
+        description="Up to 3 new search queries phrased like note text, when sufficient is False.",
     )

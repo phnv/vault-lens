@@ -98,17 +98,18 @@ def clear_meta(prefix: str) -> None:
 
 def date_filter_widgets(prefix: str) -> None:
     """One field dropdown (created/modified) plus a date-range picker."""
+    if ss.get(f"{prefix}_date_field") not in DATE_FIELDS:
+        ss[f"{prefix}_date_field"] = "modified"
+    ss.setdefault(f"{prefix}_dates", ())
     st.markdown("**Date**")
     st.selectbox(
         "Date field",
         sorted(DATE_FIELDS),
-        index=sorted(DATE_FIELDS).index("modified"),
         key=f"{prefix}_date_field",
         label_visibility="collapsed",
     )
     st.date_input(
         "Date range",
-        value=(),
         key=f"{prefix}_dates",
         format="YYYY-MM-DD",
         label_visibility="collapsed",
@@ -118,13 +119,17 @@ def date_filter_widgets(prefix: str) -> None:
 def date_range_from_state(prefix: str) -> dict[str, str] | None:
     dates = ss.get(f"{prefix}_dates", ())
     dates = (dates,) if isinstance(dates, date) else tuple(dates or ())
-    return date_range_spec(ss.get(f"{prefix}_date_field", "modified"), dates)
+    field = ss.get(f"{prefix}_date_field", "modified")
+    if field not in DATE_FIELDS:
+        field = "modified"
+    return date_range_spec(field, dates)
 
 
 def set_date_range(prefix: str, date_range: dict[str, str] | None) -> None:
     """Restore a saved date_range into the widgets (safe inside callbacks)."""
     dr = date_range or {}
-    ss[f"{prefix}_date_field"] = dr.get("field", "modified")
+    field = dr.get("field", "modified")
+    ss[f"{prefix}_date_field"] = field if field in DATE_FIELDS else "modified"
     try:
         bounds = tuple(date.fromisoformat(dr[k][:10]) for k in ("gte", "lte") if dr.get(k))
     except ValueError:

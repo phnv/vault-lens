@@ -105,3 +105,48 @@ def test_date_range_spec_variants_and_body():
 def test_date_range_spec_rejects_unknown_field():
     with pytest.raises(ValueError):
         date_range_spec("indexed_at", [date(2026, 1, 2)])
+
+
+def test_date_filter_widgets_avoids_session_state_duplication_warning(
+    monkeypatch, caplog
+):
+    import logging
+
+    from streamlit.elements.lib import policies
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setattr(policies, "_shown_default_value_warning", False)
+
+    def app():
+        import streamlit as st
+
+        from vaultlens.ui import components
+
+        st.button("clear", on_click=components.clear_date, args=("sr",))
+        st.button(
+            "load",
+            on_click=components.set_date_range,
+            args=("sr", {"field": "created", "gte": "2026-01-02", "lte": "2026-02-03"}),
+        )
+        components.date_filter_widgets("sr")
+
+    with caplog.at_level(logging.WARNING, logger="streamlit"):
+        at = AppTest.from_function(app).run()
+        assert at.selectbox[0].value == "modified"
+        assert tuple(at.date_input[0].value) == ()
+
+        at.button[1].click().run()
+        assert at.selectbox[0].value == "created"
+        assert tuple(at.date_input[0].value) == (date(2026, 1, 2), date(2026, 2, 3))
+
+        at.button[0].click().run()
+        assert at.selectbox[0].value == "modified"
+        assert tuple(at.date_input[0].value) == ()
+
+    duplication_warnings = [
+        r.message
+        for r in caplog.records
+        if "created with a default value but also had its value set via the Session State API"
+        in r.message
+    ]
+    assert duplication_warnings == []
